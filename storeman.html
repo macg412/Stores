@@ -1390,5 +1390,32 @@ async function generatePDF(){
   showToast('✓ PDF downloaded');
 }
 </script>
+<!-- FIELDHUB_BRIDGE_INSTALLED -->
+<script>
+(function(){
+  function applyContext(ctx) {
+    function setVal(id, val) {
+      var el = document.getElementById(id);
+      if (!el || val == null || val === '') return;
+      if (el.value) return;
+      el.value = val;
+      el.dispatchEvent(new Event('input',  { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    var apply = function() {
+      setVal('j-wo',      ctx.wo);
+      setVal('j-loc',     ctx.address || ctx.name);
+      setVal('j-jobtype', ctx.jobType);
+      if (typeof jobChanged === 'function') { try { jobChanged(); } catch(e){} }
+    };
+    if (document.getElementById('j-wo')) apply();
+    else document.addEventListener('DOMContentLoaded', apply);
+  }
+  window.addEventListener('message', function(e){
+    if (e.data && e.data.type === 'JOB_CONTEXT') applyContext(e.data);
+  });
+  if (window.parent !== window) window.parent.postMessage({ type:'EMBED_READY', app:'storeman' }, '*');
+})();
+</script>
 </body>
 </html>
