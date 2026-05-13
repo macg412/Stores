@@ -1448,19 +1448,21 @@ async function generatePDF(){
       el.dispatchEvent(new Event('change', { bubbles: true }));
     }
     var apply = function() {
-      setVal('j-wo',      ctx.wo);
-      setVal('j-jobtype', ctx.jobType);
-      if (typeof applyJobTypeFields === 'function') applyJobTypeFields();
-      setVal('j-loc',     ctx.address || ctx.name);
-      setVal('j-orderer', ctx.userName);
-      // Fault
-      setVal('j-cae',      ctx.cae);
-      setVal('j-je',       ctx.je);
-      // Defect / Project
-      setVal('j-downer-wo', ctx.downer_wo_number);
-      // Project
-      setVal('j-ele',      ctx.ele_number);
-      if (typeof jobChanged === 'function') { try { jobChanged(); } catch(e){} }
+      // Auto-start new job so values are set AFTER renderJobView() clears the form
+      if (typeof newJob === 'function') newJob();
+      // Set values directly on currentJob then re-render
+      if (typeof currentJob !== 'undefined' && currentJob) {
+        if (ctx.wo)                           currentJob.wo         = ctx.wo;
+        if (ctx.jobType)                      currentJob.jobType    = ctx.jobType;
+        if (ctx.address || ctx.name)          currentJob.loc        = ctx.address || ctx.name;
+        if (ctx.userName)                     currentJob.orderer    = ctx.userName;
+        if (ctx.cae)                          currentJob.caeNumber  = ctx.cae;
+        if (ctx.je)                           currentJob.jeNumber   = ctx.je;
+        if (ctx.downer_wo_number)             currentJob.downerWO   = ctx.downer_wo_number;
+        if (ctx.ele_number)                   currentJob.eleNumber  = ctx.ele_number;
+        if (typeof renderJobView === 'function') renderJobView();
+        if (typeof scheduleAutoSave === 'function') { try { scheduleAutoSave(); } catch(e){} }
+      }
     };
     if (document.getElementById('j-wo')) apply();
     else document.addEventListener('DOMContentLoaded', apply);
