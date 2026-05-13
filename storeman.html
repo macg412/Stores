@@ -221,7 +221,7 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
       </div>
       <div class="field">
         <label>Job Type <span class="req">*</span></label>
-        <select id="j-jobtype" onchange="jobTypeChanged()">
+        <select id="j-jobtype" onchange="jobTypeChanged(); applyJobTypeFields()">
           <option value="">— Select —</option>
           <option value="Fault">Fault</option>
           <option value="Project">Project</option>
@@ -230,36 +230,46 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
         </select>
       </div>
 
+      <!-- Fault only -->
+      <div class="field" id="jf-cae" hidden>
+        <label>CAE #</label>
+        <input type="text" id="j-cae" maxlength="12" placeholder="CAE number" oninput="jobChanged()">
+      </div>
+      <div class="field" id="jf-je" hidden>
+        <label>JE #</label>
+        <input type="text" id="j-je" maxlength="12" placeholder="JE number" oninput="jobChanged()">
+      </div>
+      <!-- Defect / Project -->
+      <div class="field" id="jf-downer-wo" hidden>
+        <label>Downer WO #</label>
+        <input type="text" id="j-downer-wo" maxlength="20" placeholder="Downer WO" oninput="jobChanged()">
+      </div>
+      <!-- Project only -->
+      <div class="field" id="jf-ele" hidden>
+        <label>ELE #</label>
+        <input type="text" id="j-ele" maxlength="12" placeholder="ELE number" oninput="jobChanged()">
+      </div>
+
       <div class="field span2">
         <label>Job Description / Location</label>
         <input type="text" id="j-loc" placeholder="Site address or description" oninput="jobChanged()">
       </div>
-      <div class="field">
-        <label>Ordered By</label>
-        <input type="text" id="j-orderer" placeholder="Your name" oninput="jobChanged()">
-      </div>
-      <div class="field">
-        <label>Supervisor</label>
-        <input type="text" id="j-super" placeholder="Supervisor" oninput="jobChanged()">
-      </div>
       <div class="field span2">
-        <label>Delivery Address</label>
-        <textarea id="j-notes" placeholder="Delivery address…" oninput="jobChanged()"></textarea>
+        <label>Name</label>
+        <input type="text" id="j-orderer" placeholder="Your name" oninput="jobChanged()">
       </div>
     </div>
 
     <!-- Sites -->
     <div class="sites-area">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <div class="slabel" style="margin-bottom:0;">Sites</div>
-        <button class="btn btn-ghost btn-xs" onclick="addSite()">＋ Add Site</button>
-      </div>
+      <div class="slabel" style="margin-bottom:10px;">Sites</div>
       <div id="sites-container"></div>
     </div>
   </div>
 
   <div class="sticky-footer">
     <button class="btn btn-ghost btn-sm" onclick="goHome()">✕ Close</button>
+    <button class="btn btn-ghost btn-sm" onclick="addSite()">＋ Site</button>
     <button class="btn btn-info btn-sm" onclick="generatePDF()">📄 PDF</button>
     <button class="btn btn-green" onclick="sendOrder()">📧 Send Order</button>
   </div>
@@ -403,7 +413,8 @@ function dbDelete(store,id){return new Promise((res,rej)=>{const tx=db.transacti
 // ═══════════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════════
-let currentJob=null;   // {id, wo, date, loc, orderer, super, notes, sites:[{id,name,items:[{a,b,c,d,qty}]}], savedAt}
+let _hubDocId=null;
+let currentJob=null;   // {id, wo, jobType, loc, orderer, caeNumber, jeNumber, downerWO, eleNumber, sites:[...], savedAt}
 let currentTpl=null;   // {id, name, sites:[...]}
 let autoSaveTimer=null;
 let searchCallback=null; // fn(item) called when user picks from search
@@ -482,7 +493,7 @@ function goHome(){
 //  JOB - CREATE / OPEN
 // ═══════════════════════════════════════════
 function newJob(){
-  currentJob={id:'job_'+Date.now(),wo:'',jobType:'',loc:'',orderer:'',super:'',notes:'',sites:[],savedAt:Date.now()};
+  currentJob={id:'job_'+Date.now(),wo:'',jobType:'',loc:'',orderer:'',caeNumber:'',jeNumber:'',downerWO:'',eleNumber:'',sites:[],savedAt:Date.now()};
   addSiteToJob('Site 1');
   renderJobView();
   show('view-job'); hide('view-home');
@@ -506,8 +517,11 @@ function renderJobView(){
   updateWoRequired(currentJob.jobType||'');
   document.getElementById('j-loc').value=currentJob.loc||'';
   document.getElementById('j-orderer').value=currentJob.orderer||'';
-  document.getElementById('j-super').value=currentJob.super||'';
-  document.getElementById('j-notes').value=currentJob.notes||'';
+  document.getElementById('j-cae').value=currentJob.caeNumber||'';
+  document.getElementById('j-je').value=currentJob.jeNumber||'';
+  document.getElementById('j-downer-wo').value=currentJob.downerWO||'';
+  document.getElementById('j-ele').value=currentJob.eleNumber||'';
+  applyJobTypeFields();
   document.getElementById('job-heading').textContent=currentJob.wo?'WO: '+currentJob.wo:'New Job';
   setSaveBar('Auto-saving…',false);
   renderSites();
@@ -517,8 +531,19 @@ function collectJobFields(){
   currentJob.jobType=document.getElementById('j-jobtype').value;
   currentJob.loc=document.getElementById('j-loc').value.trim();
   currentJob.orderer=document.getElementById('j-orderer').value.trim();
-  currentJob.super=document.getElementById('j-super').value.trim();
-  currentJob.notes=document.getElementById('j-notes').value.trim();
+  currentJob.caeNumber=document.getElementById('j-cae').value.trim();
+  currentJob.jeNumber=document.getElementById('j-je').value.trim();
+  currentJob.downerWO=document.getElementById('j-downer-wo').value.trim();
+  currentJob.eleNumber=document.getElementById('j-ele').value.trim();
+}
+
+function applyJobTypeFields(){
+  const t=document.getElementById('j-jobtype').value;
+  const show=(id,v)=>{const el=document.getElementById(id);if(el)el.hidden=!v;};
+  show('jf-cae',     t==='Fault');
+  show('jf-je',      t==='Fault');
+  show('jf-downer-wo', t==='Defect'||t==='Project');
+  show('jf-ele',     t==='Project');
 }
 function jobChanged(){
   collectJobFields();
@@ -944,12 +969,19 @@ function sendOrder(){
   let body=`GEAR / MATERIAL ORDER REQUEST\n${div}\n\n`;
   if(currentJob.jobType) body+=`Job Type:      ${boldText(currentJob.jobType)}\n`;
   if(currentJob.wo)     body+=`WO Number:     ${boldText(currentJob.wo)}\n`;
+  if(currentJob.jobType==='Fault'){
+    if(currentJob.caeNumber) body+=`CAE #:         ${boldText(currentJob.caeNumber)}\n`;
+    if(currentJob.jeNumber)  body+=`JE #:          ${boldText(currentJob.jeNumber)}\n`;
+  }
+  if(currentJob.jobType==='Defect'||currentJob.jobType==='Project'){
+    if(currentJob.downerWO)  body+=`Downer WO #:   ${boldText(currentJob.downerWO)}\n`;
+  }
+  if(currentJob.jobType==='Project'){
+    if(currentJob.eleNumber) body+=`ELE #:         ${boldText(currentJob.eleNumber)}\n`;
+  }
   if(currentJob.loc)     body+=`Job Description: ${boldText(currentJob.loc)}\n`;
   body+=`Date Requested: ${boldText(today)}\n`;
-  if(currentJob.orderer) body+=`Ordered By:    ${boldText(currentJob.orderer)}\n`;
-  if(currentJob.super)   body+=`Supervisor:    ${boldText(currentJob.super)}\n`;
-  body+=`Order Date:    ${boldText(today)}\n`;
-  if(currentJob.notes) body+=`Delivery Address: ${boldText(currentJob.notes)}\n`;
+  if(currentJob.orderer) body+=`Name:          ${boldText(currentJob.orderer)}\n`;
   body+='\n';
 
   // Consolidate all items across all sites, summing qty for duplicates
@@ -1305,11 +1337,13 @@ async function generatePDF(){
   const detailRows=[
     ['Job Type', currentJob.jobType||'—'],
     ['WO Number', currentJob.wo||'N/A'],
+    (currentJob.jobType==='Fault'&&currentJob.caeNumber)?['CAE #', currentJob.caeNumber]:null,
+    (currentJob.jobType==='Fault'&&currentJob.jeNumber)?['JE #', currentJob.jeNumber]:null,
+    ((currentJob.jobType==='Defect'||currentJob.jobType==='Project')&&currentJob.downerWO)?['Downer WO #', currentJob.downerWO]:null,
+    (currentJob.jobType==='Project'&&currentJob.eleNumber)?['ELE #', currentJob.eleNumber]:null,
     ['Job Description', currentJob.loc||'—'],
-    ['Ordered By', currentJob.orderer||'—'],
-    ['Supervisor', currentJob.super||'—'],
+    currentJob.orderer?['Name', currentJob.orderer]:null,
     ['Order Date', today],
-    currentJob.notes?['Delivery Address', currentJob.notes]:null,
   ].filter(Boolean);
 
   const labelW=110, valX=ML+labelW;
@@ -1388,12 +1422,23 @@ async function generatePDF(){
   a.href=url; a.download=fname; a.click();
   URL.revokeObjectURL(url);
   showToast('✓ PDF downloaded');
+
+  // Upload to hub when embedded in a job folder
+  if (window.parent !== window && _hubDocId) {
+    const reader=new FileReader();
+    reader.onloadend=()=>{
+      window.parent.postMessage({type:'SAVE_PDF',docId:_hubDocId,pdfDataUri:reader.result,formPayload:JSON.parse(JSON.stringify(currentJob)),fileName:fname},'*');
+    };
+    reader.readAsDataURL(new Blob([bytes],{type:'application/pdf'}));
+  }
 }
 </script>
 <!-- FIELDHUB_BRIDGE_INSTALLED -->
 <script>
 (function(){
   function applyContext(ctx) {
+    if (ctx.docId) _hubDocId = ctx.docId;
+
     function setVal(id, val) {
       var el = document.getElementById(id);
       if (!el || val == null || val === '') return;
@@ -1404,8 +1449,17 @@ async function generatePDF(){
     }
     var apply = function() {
       setVal('j-wo',      ctx.wo);
-      setVal('j-loc',     ctx.address || ctx.name);
       setVal('j-jobtype', ctx.jobType);
+      if (typeof applyJobTypeFields === 'function') applyJobTypeFields();
+      setVal('j-loc',     ctx.address || ctx.name);
+      setVal('j-orderer', ctx.userName);
+      // Fault
+      setVal('j-cae',      ctx.cae);
+      setVal('j-je',       ctx.je);
+      // Defect / Project
+      setVal('j-downer-wo', ctx.downer_wo_number);
+      // Project
+      setVal('j-ele',      ctx.ele_number);
       if (typeof jobChanged === 'function') { try { jobChanged(); } catch(e){} }
     };
     if (document.getElementById('j-wo')) apply();
