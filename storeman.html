@@ -575,6 +575,9 @@ async function performJobSave(silent){
   if(!currentJob)return;
   currentJob.savedAt=Date.now();
   await dbPut('jobs',currentJob);
+  if(_hubDocId && window.parent !== window){
+    window.parent.postMessage({type:'DRAFT_SAVE',docId:_hubDocId,payload:JSON.parse(JSON.stringify(currentJob))},'*');
+  }
   if(!silent){setSaveBar('✓ Draft saved',true);showToast('✓ Saved');}
 }
 function setSaveBar(msg,ok){
@@ -1448,9 +1451,14 @@ async function generatePDF(){
       el.dispatchEvent(new Event('change', { bubbles: true }));
     }
     var apply = function() {
-      // Auto-start new job so values are set AFTER renderJobView() clears the form
+      // If the hub sends back a saved payload, restore the draft from it
+      if (ctx.payload && typeof currentJob !== 'undefined') {
+        currentJob = JSON.parse(JSON.stringify(ctx.payload));
+        if (typeof renderJobView === 'function') renderJobView();
+        return;
+      }
+      // No saved payload — fresh job, auto-fill from hub context
       if (typeof newJob === 'function') newJob();
-      // Set values directly on currentJob then re-render
       if (typeof currentJob !== 'undefined' && currentJob) {
         if (ctx.wo)                           currentJob.wo         = ctx.wo;
         if (ctx.jobType)                      currentJob.jobType    = ctx.jobType;
