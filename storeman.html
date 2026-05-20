@@ -172,40 +172,13 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
 </head>
 <body>
 
-<!-- ══════════ HOME / TABS ══════════ -->
-<div id="view-home">
-  <div class="app-header">
-    <h1>⚡ Storeman</h1>
-    <div class="hbtns">
-      <button class="btn btn-accent btn-sm" onclick="newJob()">＋ New Job</button>
-    </div>
-  </div>
-  <div class="tab-bar">
-    <div class="tab active" id="tab-jobs" onclick="switchTab('jobs')">Jobs</div>
-    <div class="tab" id="tab-tpl" onclick="switchTab('tpl')">Templates</div>
-  </div>
-
-  <!-- JOBS TAB -->
-  <div id="panel-jobs">
-    <div class="card-list" id="job-list"></div>
-  </div>
-
-  <!-- TEMPLATES TAB -->
-  <div id="panel-tpl" class="hidden">
-    <div style="padding:14px 16px 6px;display:flex;justify-content:flex-end;gap:8px;">
-      <button class="btn btn-info btn-sm" onclick="newTemplate()">＋ New Template</button>
-    </div>
-    <div class="card-list" id="tpl-list"></div>
-  </div>
-</div>
 
 <!-- ══════════ JOB VIEW ══════════ -->
-<div id="view-job" class="hidden">
+<div id="view-job">
   <div class="app-header">
-    <button class="btn btn-ghost btn-sm" onclick="goHome()">← Back</button>
     <h1 id="job-heading">New Job</h1>
     <div class="hbtns">
-      <button class="btn btn-ghost btn-sm" onclick="jobMenu()" title="More options">⋮</button>
+      <button class="btn btn-ghost btn-sm" onclick="openTemplateManager()">📋 Templates</button>
     </div>
   </div>
 
@@ -279,21 +252,30 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
   </div>
 </div>
 
-<!-- ══════════ TEMPLATE EDITOR ══════════ -->
+<!-- ══════════ TEMPLATES SCREEN ══════════ -->
 <div id="view-tpl" class="hidden">
   <div class="app-header">
-    <button class="btn btn-ghost btn-sm" onclick="goHome()">← Back</button>
-    <h1 id="tpl-heading">New Template</h1>
+    <button class="btn btn-ghost btn-sm" onclick="closeTemplateManager()">← Back to Job</button>
+    <h1>Templates</h1>
+    <div class="hbtns">
+      <button class="btn btn-info btn-sm" onclick="newTemplate()">＋ New</button>
+    </div>
   </div>
-
-  <div class="tpl-editor" id="tpl-editor-area">
-    <div class="slabel" style="margin-bottom:10px;">Template Items</div>
-    <div id="tpl-sites-container"></div>
+  <!-- List -->
+  <div id="view-tpl-list">
+    <div class="card-list" id="tpl-list"></div>
   </div>
-
-  <div class="sticky-footer">
-    <button class="btn btn-ghost" onclick="goHome()">✕ Cancel</button>
-    <button class="btn btn-accent" onclick="saveTemplate()">💾 Save Template</button>
+  <!-- Editor (hidden until create/edit) -->
+  <div id="view-tpl-edit" class="hidden">
+    <div class="slabel" style="padding:12px 16px 4px;font-size:12px;letter-spacing:1.5px;" id="tpl-edit-label">New Template</div>
+    <div class="tpl-editor" id="tpl-editor-area">
+      <div class="slabel" style="margin-bottom:10px;">Template Items</div>
+      <div id="tpl-sites-container"></div>
+    </div>
+    <div class="sticky-footer">
+      <button class="btn btn-ghost" onclick="cancelTemplateEdit()">✕ Cancel</button>
+      <button class="btn btn-accent" onclick="saveTemplate()">💾 Save Template</button>
+    </div>
   </div>
 </div>
 
@@ -374,12 +356,11 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
   </div>
 </div>
 
-<!-- ══════════ JOB MENU ══════════ -->
-<div id="job-menu-overlay" class="confirm-overlay hidden">
+<!-- (job menu removed — no local draft storage) -->
+<div id="job-menu-overlay" class="confirm-overlay hidden" style="display:none!important">
   <div class="confirm-box">
     <div class="confirm-title">Job Options</div>
     <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px;">
-      <button class="btn btn-danger" onclick="deleteJobFromMenu()">🗑 Delete This Job</button>
       <button class="btn btn-ghost" onclick="closeJobMenu()">Cancel</button>
     </div>
   </div>
@@ -429,44 +410,11 @@ let tplNameCallback=null;
 // ═══════════════════════════════════════════
 //  STARTUP
 // ═══════════════════════════════════════════
-openDB().then(()=>renderHome());
+openDB().then(()=>{ newJob(); renderTemplates(); });
 
 // ═══════════════════════════════════════════
 //  HOME
 // ═══════════════════════════════════════════
-let activeTab='jobs';
-function switchTab(t){
-  activeTab=t;
-  document.getElementById('tab-jobs').classList.toggle('active',t==='jobs');
-  document.getElementById('tab-tpl').classList.toggle('active',t==='tpl');
-  document.getElementById('panel-jobs').classList.toggle('hidden',t!=='jobs');
-  document.getElementById('panel-tpl').classList.toggle('hidden',t!=='tpl');
-}
-async function renderHome(){
-  await renderJobs();
-  await renderTemplates();
-}
-async function renderJobs(){
-  const jobs=await dbGetAll('jobs');
-  jobs.sort((a,b)=>(b.savedAt||0)-(a.savedAt||0));
-  const el=document.getElementById('job-list');
-  if(!jobs.length){el.innerHTML='<div class="empty-state"><div class="empty-icon">🏗️</div><div>No jobs yet.<br>Tap <strong>+ New Job</strong> to start.</div></div>';return;}
-  el.innerHTML=jobs.map(j=>{
-    const wo=j.wo||'No WO#';
-    const loc=j.loc?' — '+j.loc:'';
-    const nsites=(j.sites||[]).length;
-    const nitems=(j.sites||[]).reduce((s,st)=>s+(st.items||[]).length,0);
-    const sub=[nsites+' site'+(nsites!==1?'s':''),nitems+' item'+(nitems!==1?'s':'')].join(' · ');
-    return `<div class="card" onclick="openJob('${j.id}')">
-      <div class="card-badge">WO</div>
-      <div class="card-info">
-        <div class="card-title">${esc(wo)}${esc(loc)}</div>
-        <div class="card-sub">${esc(sub)}</div>
-      </div>
-      <button class="card-del" onclick="confirmDeleteJob(event,'${j.id}','${esc(wo)}')" title="Delete">🗑</button>
-    </div>`;
-  }).join('');
-}
 async function renderTemplates(){
   const tpls=await dbGetAll('templates');
   tpls.sort((a,b)=>(b.savedAt||0)-(a.savedAt||0));
@@ -486,11 +434,11 @@ async function renderTemplates(){
   }).join('');
 }
 function goHome(){
-  clearTimeout(autoSaveTimer);
-  if(currentJob) performJobSave(true);
-  currentJob=null; currentTpl=null;
-  show('view-home'); hide('view-job'); hide('view-tpl');
-  renderHome();
+  if(window.parent!==window){
+    window.parent.postMessage({type:'APP_DONE'},'*');
+  } else {
+    newJob();
+  }
 }
 
 // ═══════════════════════════════════════════
@@ -500,20 +448,7 @@ function newJob(){
   currentJob={id:'job_'+Date.now(),wo:'',jobType:'',loc:'',orderer:'',caeNumber:'',jeNumber:'',downerWO:'',eleNumber:'',date:new Date().toISOString().slice(0,10),sites:[],savedAt:Date.now()};
   addSiteToJob('Site 1');
   renderJobView();
-  show('view-job'); hide('view-home');
-}
-async function openJob(id){
-  const jobs=await dbGetAll('jobs');
-  const j=jobs.find(x=>x.id===id);
-  if(!j)return;
-  currentJob=JSON.parse(JSON.stringify(j));
-  // Sync siteCounter to the highest existing site number to avoid ID collisions
-  (currentJob.sites||[]).forEach(s=>{
-    const n=parseInt((s.id||'').replace('site_',''));
-    if(!isNaN(n) && n>siteCounter) siteCounter=n;
-  });
-  renderJobView();
-  show('view-job'); hide('view-home');
+  show('view-job'); hide('view-tpl');
 }
 function renderJobView(){
   document.getElementById('j-wo').value=currentJob.wo||'';
@@ -577,14 +512,13 @@ function scheduleAutoSave(){
   setSaveBar('Saving…',false);
   autoSaveTimer=setTimeout(()=>performJobSave(false),1500);
 }
-async function performJobSave(silent){
+function performJobSave(silent){
   if(!currentJob)return;
   currentJob.savedAt=Date.now();
-  await dbPut('jobs',currentJob);
   if(_hubDocId && window.parent !== window){
     window.parent.postMessage({type:'DRAFT_SAVE',docId:_hubDocId,payload:JSON.parse(JSON.stringify(currentJob))},'*');
   }
-  if(!silent){setSaveBar('✓ Draft saved',true);showToast('✓ Saved');}
+  if(!silent){setSaveBar('✓ Saved',true);}
 }
 function setSaveBar(msg,ok){
   const el=document.getElementById('job-save-bar');
@@ -1061,12 +995,23 @@ function saveSiteAsTemplate(sid){
 //  TEMPLATE EDITOR
 // ═══════════════════════════════════════════
 let tplSiteCounter=0;
+function openTemplateManager(){
+  show('view-tpl'); hide('view-job');
+  show('view-tpl-list'); hide('view-tpl-edit');
+  renderTemplates();
+}
+function closeTemplateManager(){
+  show('view-job'); hide('view-tpl');
+}
+function cancelTemplateEdit(){
+  show('view-tpl-list'); hide('view-tpl-edit');
+}
 function newTemplate(){
   currentTpl={id:'tpl_'+Date.now(),name:'',sites:[],savedAt:Date.now()};
-  // Single site per template - no multi-group
   currentTpl.sites.push({id:'tsite_'+(++tplSiteCounter),name:'Template Items',items:[],open:true});
   renderTplView();
-  show('view-tpl'); hide('view-home');
+  document.getElementById('tpl-edit-label').textContent='New Template';
+  hide('view-tpl-list'); show('view-tpl-edit');
 }
 async function openTemplate(id){
   const tpls=await dbGetAll('templates');
@@ -1074,7 +1019,8 @@ async function openTemplate(id){
   if(!t)return;
   currentTpl=JSON.parse(JSON.stringify(t));
   renderTplView();
-  show('view-tpl'); hide('view-home');
+  document.getElementById('tpl-edit-label').textContent=t.name||'Edit Template';
+  hide('view-tpl-list'); show('view-tpl-edit');
 }
 function addTplSite(name){
   if(!name)name='Group '+(currentTpl.sites.length+1);
@@ -1169,20 +1115,14 @@ async function saveTemplate(){
     currentTpl.savedAt=Date.now();
     await dbPut('templates',currentTpl);
     showToast('✓ Template saved');
-    goHome();
-    switchTab('tpl');
+    await renderTemplates();
+    show('view-tpl-list'); hide('view-tpl-edit');
   });
 }
 
 // ═══════════════════════════════════════════
 //  DELETE CONFIRMS
 // ═══════════════════════════════════════════
-function confirmDeleteJob(e,id,wo){
-  e.stopPropagation();
-  showConfirm('Delete Job?',`Delete job "${wo}"? This cannot be undone.`,async()=>{
-    await dbDelete('jobs',id); renderJobs();
-  },'Delete');
-}
 function confirmDeleteTpl(e,id,name){
   e.stopPropagation();
   showConfirm('Delete Template?',`Delete template "${name}"? This cannot be undone.`,async()=>{
@@ -1201,12 +1141,12 @@ function confirmDeleteTplSite(sid,name){
     renderTplSites();
   },'Delete');
 }
-function jobMenu(){show('job-menu-overlay');}
+function jobMenu(){}
 function closeJobMenu(){hide('job-menu-overlay');}
 function deleteJobFromMenu(){
   closeJobMenu();
   showConfirm('Delete This Job?','Delete this job permanently? This cannot be undone.',async()=>{
-    if(currentJob){await dbDelete('jobs',currentJob.id);currentJob=null;}
+    currentJob=null;
     goHome();
   },'Delete');
 }
@@ -1439,8 +1379,11 @@ async function generatePDF(){
     const reader=new FileReader();
     reader.onloadend=()=>{
       window.parent.postMessage({type:'SAVE_PDF',docId:_hubDocId,pdfDataUri:reader.result,formPayload:JSON.parse(JSON.stringify(currentJob)),fileName:fname},'*');
+      window.parent.postMessage({type:'APP_DONE'},'*');
     };
     reader.readAsDataURL(new Blob([bytes],{type:'application/pdf'}));
+  } else {
+    newJob();
   }
 }
 </script>
