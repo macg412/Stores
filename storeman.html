@@ -258,6 +258,10 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
         <label>Name</label>
         <input type="text" id="j-orderer" placeholder="Your name" oninput="jobChanged()">
       </div>
+      <div class="field">
+        <label>Date</label>
+        <input type="date" id="j-date" oninput="jobChanged()">
+      </div>
     </div>
 
     <!-- Sites -->
@@ -493,7 +497,7 @@ function goHome(){
 //  JOB - CREATE / OPEN
 // ═══════════════════════════════════════════
 function newJob(){
-  currentJob={id:'job_'+Date.now(),wo:'',jobType:'',loc:'',orderer:'',caeNumber:'',jeNumber:'',downerWO:'',eleNumber:'',sites:[],savedAt:Date.now()};
+  currentJob={id:'job_'+Date.now(),wo:'',jobType:'',loc:'',orderer:'',caeNumber:'',jeNumber:'',downerWO:'',eleNumber:'',date:new Date().toISOString().slice(0,10),sites:[],savedAt:Date.now()};
   addSiteToJob('Site 1');
   renderJobView();
   show('view-job'); hide('view-home');
@@ -521,6 +525,7 @@ function renderJobView(){
   document.getElementById('j-je').value=currentJob.jeNumber||'';
   document.getElementById('j-downer-wo').value=currentJob.downerWO||'';
   document.getElementById('j-ele').value=currentJob.eleNumber||'';
+  document.getElementById('j-date').value=currentJob.date||'';
   applyJobTypeFields();
   document.getElementById('job-heading').textContent=currentJob.wo?'WO: '+currentJob.wo:'New Job';
   setSaveBar('Auto-saving…',false);
@@ -535,6 +540,7 @@ function collectJobFields(){
   currentJob.jeNumber=document.getElementById('j-je').value.trim();
   currentJob.downerWO=document.getElementById('j-downer-wo').value.trim();
   currentJob.eleNumber=document.getElementById('j-ele').value.trim();
+  currentJob.date=document.getElementById('j-date').value;
 }
 
 function applyJobTypeFields(){
@@ -1321,7 +1327,9 @@ async function generatePDF(){
     page.drawText(s,{x,y:ty,size,font,color:rgb(...col)});
   }
 
-  const today=new Date().toLocaleDateString('en-NZ',{day:'2-digit',month:'short',year:'numeric'});
+  const today=currentJob.date
+    ? new Date(currentJob.date+'T12:00:00').toLocaleDateString('en-NZ',{day:'2-digit',month:'short',year:'numeric'})
+    : new Date().toLocaleDateString('en-NZ',{day:'2-digit',month:'short',year:'numeric'});
 
   // ── COVER HEADER ──────────────────────────────────────────────
   // Amber bar at top
