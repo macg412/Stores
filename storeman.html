@@ -979,31 +979,7 @@ function sendOrder(){
   if(currentJob.loc)     body+=`Job Description: ${boldText(currentJob.loc)}\n`;
   body+=`Date Requested: ${boldText(today)}\n`;
   if(currentJob.orderer) body+=`Name:          ${boldText(currentJob.orderer)}\n`;
-  body+='\n';
-
-  // Consolidate all items across all sites, summing qty for duplicates
-  const consolidated = {};
-  currentJob.sites.forEach(site=>{
-    (site.items||[]).forEach(item=>{
-      const key = item.a+'||'+item.b+'||'+(item.c||'');
-      if(consolidated[key]){
-        consolidated[key].qty += (item.qty||1);
-      } else {
-        consolidated[key] = {...item, qty: item.qty||1};
-      }
-    });
-  });
-  const consolidatedItems = Object.values(consolidated);
-  if(consolidatedItems.length){
-    body+=`${div}\n`;
-    consolidatedItems.forEach(item=>{
-      const spec = item.c ? ` (${item.c})` : '';
-      body+=`${boldText(item.a)}  ${item.b}${spec} - Qty: ${boldText(item.qty)}\n`;
-    });
-    body+='\n';
-  }
-
-  body+=`${div}\nSent via Gear Order App — Downer NZ Ltd.\n`;
+  body+=`\n${div}\nSTORES DOCKET PDF MANUALLY ATTACHED - IF MISSING CONTACT SENDER\n${div}\nSent via Gear Order App — Downer NZ Ltd.\n`;
 
   const woLabel = currentJob.wo || currentJob.jobType || 'Order';
   const subj=`Gear Order — ${woLabel}${currentJob.loc?' — '+currentJob.loc:''}`;
