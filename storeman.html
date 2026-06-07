@@ -1475,14 +1475,23 @@ async function doPDF(mode, siteId, silent){
   const modeLabel=mode==='total'?'Total':mode==='bysite'?'BySite':'Site';
   const fname=`StoresIssue_${docketNo}_${currentJob.wo||'Order'}_${modeLabel}.pdf`;
 
-  // Trigger download — delay revoke so the browser has time to read the blob
-  const a=document.createElement('a');
-  a.style.display='none';
-  a.href=url; a.download=fname;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url), 30000);
+  // Browsers block downloads from iframes — send bytes to parent hub to trigger download
+  if(window.parent!==window){
+    const reader=new FileReader();
+    reader.onloadend=()=>{
+      window.parent.postMessage({type:'DOWNLOAD_PDF',pdfDataUri:reader.result,fileName:fname},'*');
+    };
+    reader.readAsDataURL(blob);
+  } else {
+    // Standalone (not in iframe)
+    const a=document.createElement('a');
+    a.style.display='none';
+    a.href=url; a.download=fname;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),30000);
+  }
 
   showToast('✓ PDF — Docket #'+docketNo);
 
