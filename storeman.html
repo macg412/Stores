@@ -1008,8 +1008,8 @@ function sendOrder(){
   const woLabel = currentJob.wo || currentJob.jobType || 'Order';
   const subj=`Gear Order — ${woLabel}${currentJob.loc?' — '+currentJob.loc:''}`;
   window.location.href=`mailto:?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
-  // Also generate a Gear Total PDF for the stores counter
-  setTimeout(()=>doPDF('total', null, true), 800);
+  // Generate Gear Total PDF, mark as submitted, and close
+  setTimeout(()=>submitAndClose(), 800);
 }
 
 // ═══════════════════════════════════════════
@@ -1472,21 +1472,43 @@ async function doPDF(mode, siteId, silent){
   const bytes=await pdfDoc.save();
   const blob=new Blob([bytes],{type:'application/pdf'});
   const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
   const modeLabel=mode==='total'?'Total':mode==='bysite'?'BySite':'Site';
   const fname=`StoresIssue_${docketNo}_${currentJob.wo||'Order'}_${modeLabel}.pdf`;
-  a.href=url; a.download=fname; a.click();
-  URL.revokeObjectURL(url);
-  if(!silent) showToast('✓ PDF downloaded — Docket #'+docketNo);
 
-  // Upload to hub when embedded in a job folder
+  // Trigger download — delay revoke so the browser has time to read the blob
+  const a=document.createElement('a');
+  a.style.display='none';
+  a.href=url; a.download=fname;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 30000);
+
+  showToast('✓ PDF — Docket #'+docketNo);
+
+  // Return the bytes so sendOrder can use them for submission
+  return {bytes, fname};
+}
+
+// Called only from sendOrder — marks the doc as submitted and closes
+async function submitAndClose(){
+  collectJobFields();
+  if(!currentJob.jobType||(!currentJob.wo&&currentJob.jobType!=='STORE STOCK REQUIRED')||
+     !currentJob.sites.reduce((a,s)=>a+(s.items||[]).length,0)) return;
+  const {bytes,fname}=await doPDF('total',null)||{};
   if(window.parent!==window && _hubDocId){
-    const reader=new FileReader();
-    reader.onloadend=()=>{
-      window.parent.postMessage({type:'SAVE_PDF',docId:_hubDocId,pdfDataUri:reader.result,formPayload:JSON.parse(JSON.stringify(currentJob)),fileName:fname},'*');
-      if(!silent) window.parent.postMessage({type:'APP_DONE'},'*');
-    };
-    reader.readAsDataURL(new Blob([bytes],{type:'application/pdf'}));
+    const payload=JSON.parse(JSON.stringify(currentJob));
+    if(bytes){
+      const reader=new FileReader();
+      reader.onloadend=()=>{
+        window.parent.postMessage({type:'SAVE_PDF',docId:_hubDocId,formPayload:payload,fileName:fname},'*');
+        window.parent.postMessage({type:'APP_DONE'},'*');
+      };
+      reader.readAsDataURL(new Blob([bytes],{type:'application/pdf'}));
+    } else {
+      window.parent.postMessage({type:'SAVE_PDF',docId:_hubDocId,formPayload:payload},'*');
+      window.parent.postMessage({type:'APP_DONE'},'*');
+    }
   }
 }
 </script>
