@@ -79,6 +79,14 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:1
 .site-chevron.open{transform:rotate(180deg);}
 .site-body{padding:10px 12px 12px;}
 
+/* ── PDF PICKER ── */
+.pdf-opt-btn{display:block;width:100%;text-align:left;background:none;border:none;border-bottom:1px solid var(--border);padding:14px 16px;cursor:pointer;color:var(--text);}
+.pdf-opt-btn:last-child{border-bottom:none;}
+.pdf-opt-btn:active{background:var(--surface2);}
+.pdf-opt-title{font-weight:700;font-size:.95rem;margin-bottom:3px;}
+.pdf-opt-sub{font-size:.8rem;color:var(--muted);}
+.picker-back{background:none;border:none;color:var(--accent);font-size:.9rem;cursor:pointer;padding:0;}
+
 /* ── SEARCH MODAL ── */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;display:flex;flex-direction:column;}
 .modal-box{background:var(--surface);border-radius:14px 14px 0 0;margin-top:auto;max-height:85vh;display:flex;flex-direction:column;}
@@ -246,7 +254,7 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
 
   <div class="sticky-footer">
     <button class="btn btn-ghost btn-sm" onclick="addSite()">＋ Site</button>
-    <button class="btn btn-info btn-sm" onclick="generatePDF()">📄 PDF</button>
+    <button class="btn btn-info btn-sm" onclick="showPdfPicker()">📄 PDF</button>
     <button class="btn btn-green" onclick="sendOrder()">📧 Send Order</button>
   </div>
 </div>
@@ -279,6 +287,42 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
       <button class="btn btn-ghost" onclick="cancelTemplateEdit()">✕ Cancel</button>
       <button class="btn btn-accent" onclick="saveTemplate()">💾 Save Template</button>
     </div>
+  </div>
+</div>
+
+<!-- ══════════ PDF PICKER ══════════ -->
+<div id="pdf-picker" class="modal-overlay hidden" onclick="if(event.target===this)closePdfPicker()">
+  <div class="modal-box" style="max-width:420px;align-self:center;width:100%;border-radius:14px 14px 0 0;">
+    <div class="modal-header">
+      <span class="modal-title">Generate PDF</span>
+      <button class="btn btn-ghost btn-sm" onclick="closePdfPicker()">✕</button>
+    </div>
+    <div>
+      <button class="pdf-opt-btn" onclick="doPDF('total')">
+        <div class="pdf-opt-title">📊 Gear Total</div>
+        <div class="pdf-opt-sub">All gear consolidated across every site — duplicates summed</div>
+      </button>
+      <button class="pdf-opt-btn" onclick="doPDF('bysite')">
+        <div class="pdf-opt-title">📋 Gear by Site</div>
+        <div class="pdf-opt-sub">Separate section for each site</div>
+      </button>
+      <button class="pdf-opt-btn" onclick="showSitePicker()">
+        <div class="pdf-opt-title">📍 Site Gear</div>
+        <div class="pdf-opt-sub">Pick one site and generate a PDF for it only</div>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ SITE PICKER ══════════ -->
+<div id="site-picker" class="modal-overlay hidden" onclick="if(event.target===this)closeSitePicker()">
+  <div class="modal-box" style="max-width:420px;align-self:center;width:100%;border-radius:14px 14px 0 0;">
+    <div class="modal-header">
+      <button class="picker-back" onclick="closeSitePicker();show('pdf-picker')">← Back</button>
+      <span class="modal-title" style="margin-left:10px;">Choose Site</span>
+      <button class="btn btn-ghost btn-sm" onclick="closeSitePicker()">✕</button>
+    </div>
+    <div id="site-picker-list"></div>
   </div>
 </div>
 
@@ -964,6 +1008,8 @@ function sendOrder(){
   const woLabel = currentJob.wo || currentJob.jobType || 'Order';
   const subj=`Gear Order — ${woLabel}${currentJob.loc?' — '+currentJob.loc:''}`;
   window.location.href=`mailto:?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+  // Also generate a Gear Total PDF for the stores counter
+  setTimeout(()=>doPDF('total', null, true), 800);
 }
 
 // ═══════════════════════════════════════════
@@ -1228,14 +1274,40 @@ function fmtDateLong(iso){if(!iso)return'';const[y,m,d]=iso.split('-');const mn=
 // ═══════════════════════════════════════════
 //  PDF GENERATION
 // ═══════════════════════════════════════════
-async function generatePDF(){
+
+function nextDocketNo(){
+  const key='storemanDocketNo';
+  const n=parseInt(localStorage.getItem(key)||'59999999');
+  const next=n+1;
+  localStorage.setItem(key,String(next));
+  return next;
+}
+
+function showPdfPicker(){
   collectJobFields();
   if(!currentJob.jobType){alert('Please select a Job Type first.');return;}
-  if(!currentJob.wo && currentJob.jobType!=='STORE STOCK REQUIRED'){
-    alert('Please enter a WO Number first.');return;
-  }
+  if(!currentJob.wo&&currentJob.jobType!=='STORE STOCK REQUIRED'){alert('Please enter a WO Number first.');return;}
   const allItems=currentJob.sites.reduce((a,s)=>a+(s.items||[]).length,0);
   if(!allItems){alert('Add at least one item before generating a PDF.');return;}
+  show('pdf-picker');
+}
+function closePdfPicker(){hide('pdf-picker');}
+
+function showSitePicker(){
+  const sitesWithItems=currentJob.sites.filter(s=>(s.items||[]).length>0);
+  document.getElementById('site-picker-list').innerHTML=sitesWithItems.map(site=>`
+    <button class="pdf-opt-btn" onclick="doPDF('singlesite','${site.id}')">
+      <div class="pdf-opt-title">${esc(site.name)}</div>
+      <div class="pdf-opt-sub">${site.items.length} item${site.items.length!==1?'s':''}</div>
+    </button>`).join('');
+  hide('pdf-picker');
+  show('site-picker');
+}
+function closeSitePicker(){hide('site-picker');}
+
+async function doPDF(mode, siteId, silent){
+  hide('pdf-picker'); hide('site-picker');
+  collectJobFields();
 
   const {PDFDocument,rgb,StandardFonts}=PDFLib;
   const pdfDoc=await PDFDocument.create();
@@ -1243,57 +1315,54 @@ async function generatePDF(){
   const fontReg=await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   const A4W=595, A4H=842;
-  const ML=45, MR=45, MT=45, MB=45;
+  const ML=40, MR=40, MT=40, MB=40;
   const CW=A4W-ML-MR;
-  const ACCENT=[0.961,0.620,0.043];  // amber #f59e0b
-  const DARK=[0.059,0.067,0.078];    // near black
-  const MID=[0.478,0.502,0.600];     // muted
+  // Teal #006B5E
+  const TEAL=[0,0.420,0.369];
+  const WHITE=[1,1,1];
+  const DARK=[0.05,0.05,0.05];
+  const MID=[0.45,0.45,0.45];
+  const LIGHT=[0.97,0.97,0.97];
 
   let page=pdfDoc.addPage([A4W,A4H]);
   let y=A4H-MT;
 
+  const docketNo=nextDocketNo();
+
+  const today=currentJob.date
+    ? new Date(currentJob.date+'T12:00:00').toLocaleDateString('en-NZ',{day:'2-digit',month:'2-digit',year:'numeric'})
+    : new Date().toLocaleDateString('en-NZ',{day:'2-digit',month:'2-digit',year:'numeric'});
+
   function newPage(){
     page=pdfDoc.addPage([A4W,A4H]);
     y=A4H-MT;
-    // Subtle header bar on each page
-    page.drawRectangle({x:0,y:A4H-28,width:A4W,height:28,color:rgb(...DARK)});
-    page.drawText('STOREMAN  —  Downer NZ Ltd.',{x:ML,y:A4H-19,size:8,font:fontBold,color:rgb(1,1,1)});
-    y=A4H-46;
+    // Continuation header
+    page.drawRectangle({x:0,y:A4H-36,width:A4W,height:36,color:rgb(...TEAL)});
+    page.drawText(`STORES ISSUE — DOCKET NO. ${docketNo}  (cont.)`,{x:ML,y:A4H-24,size:10,font:fontBold,color:rgb(...WHITE)});
+    y=A4H-54;
   }
 
-  function checkY(needed){
-    if(y-needed<MB) newPage();
-  }
+  function checkY(needed){if(y-needed<MB)newPage();}
 
-  function drawLine(x1,y1,x2,y2,thickness=0.5,col=MID){
+  function drawLine(x1,y1,x2,y2,thickness=0.4,col=MID){
     page.drawLine({start:{x:x1,y:y1},end:{x:x2,y:y2},thickness,color:rgb(...col)});
   }
 
-  function text(str,x,ty,size,font,col=DARK,maxW=0){
+  function txt(str,x,ty,size,font,col,maxW){
     let s=String(str||'');
-    if(maxW && font.widthOfTextAtSize(s,size)>maxW){
-      while(s.length>1 && font.widthOfTextAtSize(s+'…',size)>maxW) s=s.slice(0,-1);
+    const c=col||DARK;
+    if(maxW&&font.widthOfTextAtSize(s,size)>maxW){
+      while(s.length>1&&font.widthOfTextAtSize(s+'…',size)>maxW)s=s.slice(0,-1);
       s+='…';
     }
-    page.drawText(s,{x,y:ty,size,font,color:rgb(...col)});
+    page.drawText(s,{x,y:ty,size,font,color:rgb(...c)});
   }
 
-  const today=currentJob.date
-    ? new Date(currentJob.date+'T12:00:00').toLocaleDateString('en-NZ',{day:'2-digit',month:'short',year:'numeric'})
-    : new Date().toLocaleDateString('en-NZ',{day:'2-digit',month:'short',year:'numeric'});
-
-  // ── COVER HEADER ──────────────────────────────────────────────
-  // Amber bar at top
-  page.drawRectangle({x:0,y:A4H-70,width:A4W,height:70,color:rgb(...ACCENT)});
-  text('GEAR ORDER',ML,A4H-32,22,fontBold,[0.059,0.067,0.078]);
-  text('Storeman  —  Downer NZ Ltd.',ML,A4H-50,9,fontReg,[0.2,0.2,0.2]);
-  // WO badge
-  if(currentJob.wo){
-    const badgeX=A4W-MR-100;
-    page.drawRectangle({x:badgeX,y:A4H-58,width:100,height:24,color:rgb(0,0,0),opacity:0.15});
-    text('WO: '+currentJob.wo,badgeX+6,A4H-49,10,fontBold,[0,0,0]);
-  }
-  y=A4H-86;
+  // ── TEAL HEADER ──────────────────────────────────────────────
+  const hdrH=54;
+  page.drawRectangle({x:0,y:A4H-hdrH,width:A4W,height:hdrH,color:rgb(...TEAL)});
+  txt('STORES ISSUE: DOCKET NO. '+docketNo, ML, A4H-34, 18, fontBold, WHITE);
+  y=A4H-hdrH-16;
 
   // ── JOB DETAILS BLOCK ─────────────────────────────────────────
   const detailRows=[
@@ -1303,76 +1372,100 @@ async function generatePDF(){
     (currentJob.jobType==='Fault'&&currentJob.jeNumber)?['JE #', currentJob.jeNumber]:null,
     ((currentJob.jobType==='Defect'||currentJob.jobType==='Project')&&currentJob.downerWO)?['Downer WO #', currentJob.downerWO]:null,
     (currentJob.jobType==='Project'&&currentJob.eleNumber)?['ELE #', currentJob.eleNumber]:null,
-    ['Job Description', currentJob.loc||'—'],
+    currentJob.loc?['Description', currentJob.loc]:null,
     currentJob.orderer?['Name', currentJob.orderer]:null,
-    ['Order Date', today],
+    ['Date', today],
   ].filter(Boolean);
 
-  const labelW=110, valX=ML+labelW;
+  const lblW=100, valX=ML+lblW+8;
   detailRows.forEach(([lbl,val])=>{
-    checkY(16);
-    text(lbl+':',ML,y,9,fontBold,MID);
-    text(val,valX,y,9,fontBold,DARK,CW-labelW);
-    y-=14;
+    checkY(14);
+    txt(lbl+':',ML,y,9,fontBold,MID);
+    txt(val,valX,y,9,fontReg,DARK,CW-lblW-10);
+    y-=13;
   });
-  y-=6;
-  drawLine(ML,y,ML+CW,y);
-  y-=14;
+  y-=8;
+  drawLine(ML,y,ML+CW,y,0.6,TEAL);
+  y-=16;
 
-  // ── PER-SITE GEAR LISTS ───────────────────────────────────────
-  const sitesWithItems=currentJob.sites.filter(s=>(s.items||[]).length>0);
+  // ── BUILD SECTIONS ────────────────────────────────────────────
+  // Columns: IV Code | Description | Spec | UOM | Qty
+  const colCode=ML,        colCodeW=52;
+  const colDesc=ML+56,     colDescW=220;
+  const colSpec=ML+280,    colSpecW=100;
+  const colUom=ML+384,     colUomW=36;
+  const colQty=ML+424,     colQtyW=CW-(424);
 
-  sitesWithItems.forEach((site,si)=>{
-    checkY(40);
+  function drawTableHeader(){
+    checkY(22);
+    page.drawRectangle({x:ML,y:y-5,width:CW,height:20,color:rgb(...TEAL)});
+    txt('IV CODE',  colCode, y+2, 8, fontBold, WHITE);
+    txt('DESCRIPTION', colDesc, y+2, 8, fontBold, WHITE);
+    txt('SPEC',     colSpec, y+2, 8, fontBold, WHITE);
+    txt('UOM',      colUom,  y+2, 8, fontBold, WHITE);
+    txt('QTY',      colQty,  y+2, 8, fontBold, WHITE);
+    y-=24;
+  }
 
-    // Site header bar
-    page.drawRectangle({x:ML,y:y-4,width:CW,height:18,color:rgb(...DARK)});
-    text(site.name.toUpperCase(),ML+6,y+1,9,fontBold,[1,1,1]);
-    text(site.items.length+' item'+(site.items.length!==1?'s':''),ML+CW-60,y+1,8,fontReg,[0.8,0.8,0.8]);
-    y-=22;
-
-    // Column headers
-    const colQX=ML, colQW=30;
-    const colCX=ML+34, colCW=52;
-    const colSX=ML+90, colSW=120;
-    const colDX=ML+214;
-
-    text('QTY',colQX,y,7.5,fontBold,MID);
-    text('CODE',colCX,y,7.5,fontBold,MID);
-    text('SPEC',colSX,y,7.5,fontBold,MID);
-    text('DESCRIPTION',colDX,y,7.5,fontBold,MID);
-    y-=4;
-    drawLine(ML,y,ML+CW,y,0.4,MID);
-    y-=10;
-
-    // Items
-    site.items.forEach((item,ii)=>{
+  function drawItems(items){
+    drawTableHeader();
+    items.forEach((item,ii)=>{
       checkY(14);
-      // Alternating row tint
       if(ii%2===0){
-        page.drawRectangle({x:ML,y:y-3,width:CW,height:13,color:rgb(0.97,0.97,0.97)});
+        page.drawRectangle({x:ML,y:y-4,width:CW,height:13,color:rgb(...LIGHT)});
       }
-      text(String(item.qty||1),colQX,y,8.5,fontBold,DARK);
-      text(item.a||'',colCX,y,8.5,fontReg,DARK,colCW);
-      text(item.c||'',colSX,y,8,fontReg,MID,colSW);
-      text(item.b||'',colDX,y,8.5,fontReg,DARK,CW-214+ML);
+      txt(item.a||'', colCode, y, 8.5, fontBold, DARK, colCodeW);
+      txt(item.b||'', colDesc, y, 8.5, fontReg,  DARK, colDescW);
+      txt(item.c||'', colSpec, y, 8,   fontReg,  MID,  colSpecW);
+      txt('EA',       colUom,  y, 8.5, fontReg,  DARK);
+      txt(String(item.qty||1), colQty, y, 8.5, fontBold, DARK);
       y-=13;
     });
+    y-=6;
+  }
 
-    y-=8;
-    if(si<sitesWithItems.length-1){
-      drawLine(ML,y,ML+CW,y,0.3,MID);
-      y-=10;
+  if(mode==='total'){
+    // Consolidate all items, sum duplicates
+    const map={};
+    currentJob.sites.forEach(site=>{
+      (site.items||[]).forEach(item=>{
+        const k=item.a+'||'+item.b+'||'+(item.c||'');
+        if(map[k]){map[k].qty+=(item.qty||1);}
+        else{map[k]={...item,qty:item.qty||1};}
+      });
+    });
+    drawItems(Object.values(map));
+
+  } else if(mode==='bysite'){
+    const sitesWithItems=currentJob.sites.filter(s=>(s.items||[]).length>0);
+    sitesWithItems.forEach((site,si)=>{
+      checkY(50);
+      // Site sub-header
+      page.drawRectangle({x:ML,y:y-4,width:CW,height:18,color:rgb(0.12,0.12,0.15)});
+      txt(site.name.toUpperCase(), ML+6, y+1, 9, fontBold, WHITE);
+      txt(site.items.length+' item'+(site.items.length!==1?'s':''), ML+CW-60, y+1, 8, fontReg, [0.7,0.7,0.7]);
+      y-=22;
+      drawItems(site.items);
+      if(si<sitesWithItems.length-1){drawLine(ML,y,ML+CW,y,0.3,MID);y-=10;}
+    });
+
+  } else if(mode==='singlesite'){
+    const site=currentJob.sites.find(s=>s.id===siteId);
+    if(site){
+      // Site label above table
+      page.drawRectangle({x:ML,y:y-4,width:CW,height:18,color:rgb(0.12,0.12,0.15)});
+      txt(site.name.toUpperCase(), ML+6, y+1, 9, fontBold, WHITE);
+      y-=22;
+      drawItems(site.items);
     }
-  });
+  }
 
-  // ── FOOTER ────────────────────────────────────────────────────
-  // Add footer to every page
+  // ── FOOTER on every page ──────────────────────────────────────
   const pages=pdfDoc.getPages();
   pages.forEach((pg,i)=>{
-    pg.drawLine({start:{x:ML,y:MB+12},end:{x:A4W-MR,y:MB+12},thickness:0.5,color:rgb(...MID)});
-    pg.drawText('Sent via Storeman — Downer NZ Ltd.',{x:ML,y:MB,size:7,font:fontReg,color:rgb(...MID)});
-    pg.drawText(`Page ${i+1} of ${pages.length}`,{x:A4W-MR-50,y:MB,size:7,font:fontReg,color:rgb(...MID)});
+    pg.drawLine({start:{x:ML,y:MB+14},end:{x:A4W-MR,y:MB+14},thickness:0.4,color:rgb(...TEAL)});
+    pg.drawText('Downer NZ Ltd.  —  Storeman',{x:ML,y:MB+2,size:7,font:fontReg,color:rgb(...MID)});
+    pg.drawText(`Page ${i+1} of ${pages.length}`,{x:A4W-MR-50,y:MB+2,size:7,font:fontReg,color:rgb(...MID)});
   });
 
   // ── SAVE & DOWNLOAD ───────────────────────────────────────────
@@ -1380,21 +1473,20 @@ async function generatePDF(){
   const blob=new Blob([bytes],{type:'application/pdf'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
-  const fname='GearOrder'+(currentJob.wo?'_'+currentJob.wo:'')+'_'+today.replace(/ /g,'')+'.pdf';
+  const modeLabel=mode==='total'?'Total':mode==='bysite'?'BySite':'Site';
+  const fname=`StoresIssue_${docketNo}_${currentJob.wo||'Order'}_${modeLabel}.pdf`;
   a.href=url; a.download=fname; a.click();
   URL.revokeObjectURL(url);
-  showToast('✓ PDF downloaded');
+  if(!silent) showToast('✓ PDF downloaded — Docket #'+docketNo);
 
   // Upload to hub when embedded in a job folder
-  if (window.parent !== window && _hubDocId) {
+  if(window.parent!==window && _hubDocId){
     const reader=new FileReader();
     reader.onloadend=()=>{
       window.parent.postMessage({type:'SAVE_PDF',docId:_hubDocId,pdfDataUri:reader.result,formPayload:JSON.parse(JSON.stringify(currentJob)),fileName:fname},'*');
-      window.parent.postMessage({type:'APP_DONE'},'*');
+      if(!silent) window.parent.postMessage({type:'APP_DONE'},'*');
     };
     reader.readAsDataURL(new Blob([bytes],{type:'application/pdf'}));
-  } else {
-    newJob();
   }
 }
 </script>
