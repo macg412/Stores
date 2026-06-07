@@ -245,7 +245,6 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
   </div>
 
   <div class="sticky-footer">
-    <button class="btn btn-ghost btn-sm" onclick="goHome()">✕ Close</button>
     <button class="btn btn-ghost btn-sm" onclick="addSite()">＋ Site</button>
     <button class="btn btn-info btn-sm" onclick="generatePDF()">📄 PDF</button>
     <button class="btn btn-green" onclick="sendOrder()">📧 Send Order</button>
@@ -263,6 +262,10 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
   </div>
   <!-- List -->
   <div id="view-tpl-list">
+    <div style="padding:10px 16px 6px;">
+      <input type="search" id="tpl-search" placeholder="Search templates…" oninput="filterTemplates(this.value)"
+        style="width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--surface2);color:var(--text);font-size:14px;outline:none;">
+    </div>
     <div class="card-list" id="tpl-list"></div>
   </div>
   <!-- Editor (hidden until create/edit) -->
@@ -432,6 +435,13 @@ async function renderTemplates(){
       <button class="card-del" onclick="confirmDeleteTpl(event,'${t.id}','${esc(t.name||'this template')}')" title="Delete">🗑</button>
     </div>`;
   }).join('');
+}
+function filterTemplates(q){
+  const term=q.trim().toLowerCase();
+  document.querySelectorAll('#tpl-list .card').forEach(card=>{
+    const title=card.querySelector('.card-title')?.textContent.toLowerCase()||'';
+    card.style.display=(!term||title.includes(term))?'':'none';
+  });
 }
 function goHome(){
   if(window.parent!==window){
@@ -998,6 +1008,7 @@ let tplSiteCounter=0;
 function openTemplateManager(){
   show('view-tpl'); hide('view-job');
   show('view-tpl-list'); hide('view-tpl-edit');
+  const s=document.getElementById('tpl-search'); if(s) s.value='';
   renderTemplates();
 }
 function closeTemplateManager(){
