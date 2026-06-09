@@ -172,13 +172,40 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
 </head>
 <body>
 
+<!-- ══════════ HOME / TABS ══════════ -->
+<div id="view-home">
+  <div class="app-header">
+    <h1>⚡ Storeman</h1>
+    <div class="hbtns">
+      <button class="btn btn-accent btn-sm" onclick="newJob()">＋ New Job</button>
+    </div>
+  </div>
+  <div class="tab-bar">
+    <div class="tab active" id="tab-jobs" onclick="switchTab('jobs')">Jobs</div>
+    <div class="tab" id="tab-tpl" onclick="switchTab('tpl')">Templates</div>
+  </div>
+
+  <!-- JOBS TAB -->
+  <div id="panel-jobs">
+    <div class="card-list" id="job-list"></div>
+  </div>
+
+  <!-- TEMPLATES TAB -->
+  <div id="panel-tpl" class="hidden">
+    <div style="padding:14px 16px 6px;display:flex;justify-content:flex-end;gap:8px;">
+      <button class="btn btn-info btn-sm" onclick="newTemplate()">＋ New Template</button>
+    </div>
+    <div class="card-list" id="tpl-list"></div>
+  </div>
+</div>
 
 <!-- ══════════ JOB VIEW ══════════ -->
-<div id="view-job">
+<div id="view-job" class="hidden">
   <div class="app-header">
+    <button class="btn btn-ghost btn-sm" onclick="goHome()">← Back</button>
     <h1 id="job-heading">New Job</h1>
     <div class="hbtns">
-      <button class="btn btn-ghost btn-sm" onclick="openTemplateManager()">📋 Templates</button>
+      <button class="btn btn-ghost btn-sm" onclick="jobMenu()" title="More options">⋮</button>
     </div>
   </div>
 
@@ -231,10 +258,6 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
         <label>Name</label>
         <input type="text" id="j-orderer" placeholder="Your name" oninput="jobChanged()">
       </div>
-      <div class="field">
-        <label>Date</label>
-        <input type="date" id="j-date" oninput="jobChanged()">
-      </div>
     </div>
 
     <!-- Sites -->
@@ -252,30 +275,21 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
   </div>
 </div>
 
-<!-- ══════════ TEMPLATES SCREEN ══════════ -->
+<!-- ══════════ TEMPLATE EDITOR ══════════ -->
 <div id="view-tpl" class="hidden">
   <div class="app-header">
-    <button class="btn btn-ghost btn-sm" onclick="closeTemplateManager()">← Back to Job</button>
-    <h1>Templates</h1>
-    <div class="hbtns">
-      <button class="btn btn-info btn-sm" onclick="newTemplate()">＋ New</button>
-    </div>
+    <button class="btn btn-ghost btn-sm" onclick="goHome()">← Back</button>
+    <h1 id="tpl-heading">New Template</h1>
   </div>
-  <!-- List -->
-  <div id="view-tpl-list">
-    <div class="card-list" id="tpl-list"></div>
+
+  <div class="tpl-editor" id="tpl-editor-area">
+    <div class="slabel" style="margin-bottom:10px;">Template Items</div>
+    <div id="tpl-sites-container"></div>
   </div>
-  <!-- Editor (hidden until create/edit) -->
-  <div id="view-tpl-edit" class="hidden">
-    <div class="slabel" style="padding:12px 16px 4px;font-size:12px;letter-spacing:1.5px;" id="tpl-edit-label">New Template</div>
-    <div class="tpl-editor" id="tpl-editor-area">
-      <div class="slabel" style="margin-bottom:10px;">Template Items</div>
-      <div id="tpl-sites-container"></div>
-    </div>
-    <div class="sticky-footer">
-      <button class="btn btn-ghost" onclick="cancelTemplateEdit()">✕ Cancel</button>
-      <button class="btn btn-accent" onclick="saveTemplate()">💾 Save Template</button>
-    </div>
+
+  <div class="sticky-footer">
+    <button class="btn btn-ghost" onclick="goHome()">✕ Cancel</button>
+    <button class="btn btn-accent" onclick="saveTemplate()">💾 Save Template</button>
   </div>
 </div>
 
@@ -356,11 +370,12 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
   </div>
 </div>
 
-<!-- (job menu removed — no local draft storage) -->
-<div id="job-menu-overlay" class="confirm-overlay hidden" style="display:none!important">
+<!-- ══════════ JOB MENU ══════════ -->
+<div id="job-menu-overlay" class="confirm-overlay hidden">
   <div class="confirm-box">
     <div class="confirm-title">Job Options</div>
     <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px;">
+      <button class="btn btn-danger" onclick="deleteJobFromMenu()">🗑 Delete This Job</button>
       <button class="btn btn-ghost" onclick="closeJobMenu()">Cancel</button>
     </div>
   </div>
@@ -399,6 +414,7 @@ function dbDelete(store,id){return new Promise((res,rej)=>{const tx=db.transacti
 //  STATE
 // ═══════════════════════════════════════════
 let _hubDocId=null;
+let _exportMode=false;
 let currentJob=null;   // {id, wo, jobType, loc, orderer, caeNumber, jeNumber, downerWO, eleNumber, sites:[...], savedAt}
 let currentTpl=null;   // {id, name, sites:[...]}
 let autoSaveTimer=null;
@@ -410,11 +426,44 @@ let tplNameCallback=null;
 // ═══════════════════════════════════════════
 //  STARTUP
 // ═══════════════════════════════════════════
-openDB().then(()=>{ newJob(); renderTemplates(); });
+openDB().then(()=>renderHome());
 
 // ═══════════════════════════════════════════
 //  HOME
 // ═══════════════════════════════════════════
+let activeTab='jobs';
+function switchTab(t){
+  activeTab=t;
+  document.getElementById('tab-jobs').classList.toggle('active',t==='jobs');
+  document.getElementById('tab-tpl').classList.toggle('active',t==='tpl');
+  document.getElementById('panel-jobs').classList.toggle('hidden',t!=='jobs');
+  document.getElementById('panel-tpl').classList.toggle('hidden',t!=='tpl');
+}
+async function renderHome(){
+  await renderJobs();
+  await renderTemplates();
+}
+async function renderJobs(){
+  const jobs=await dbGetAll('jobs');
+  jobs.sort((a,b)=>(b.savedAt||0)-(a.savedAt||0));
+  const el=document.getElementById('job-list');
+  if(!jobs.length){el.innerHTML='<div class="empty-state"><div class="empty-icon">🏗️</div><div>No jobs yet.<br>Tap <strong>+ New Job</strong> to start.</div></div>';return;}
+  el.innerHTML=jobs.map(j=>{
+    const wo=j.wo||'No WO#';
+    const loc=j.loc?' — '+j.loc:'';
+    const nsites=(j.sites||[]).length;
+    const nitems=(j.sites||[]).reduce((s,st)=>s+(st.items||[]).length,0);
+    const sub=[nsites+' site'+(nsites!==1?'s':''),nitems+' item'+(nitems!==1?'s':'')].join(' · ');
+    return `<div class="card" onclick="openJob('${j.id}')">
+      <div class="card-badge">WO</div>
+      <div class="card-info">
+        <div class="card-title">${esc(wo)}${esc(loc)}</div>
+        <div class="card-sub">${esc(sub)}</div>
+      </div>
+      <button class="card-del" onclick="confirmDeleteJob(event,'${j.id}','${esc(wo)}')" title="Delete">🗑</button>
+    </div>`;
+  }).join('');
+}
 async function renderTemplates(){
   const tpls=await dbGetAll('templates');
   tpls.sort((a,b)=>(b.savedAt||0)-(a.savedAt||0));
@@ -434,21 +483,34 @@ async function renderTemplates(){
   }).join('');
 }
 function goHome(){
-  if(window.parent!==window){
-    window.parent.postMessage({type:'APP_DONE'},'*');
-  } else {
-    newJob();
-  }
+  clearTimeout(autoSaveTimer);
+  if(currentJob) performJobSave(true);
+  currentJob=null; currentTpl=null;
+  show('view-home'); hide('view-job'); hide('view-tpl');
+  renderHome();
 }
 
 // ═══════════════════════════════════════════
 //  JOB - CREATE / OPEN
 // ═══════════════════════════════════════════
 function newJob(){
-  currentJob={id:'job_'+Date.now(),wo:'',jobType:'',loc:'',orderer:'',caeNumber:'',jeNumber:'',downerWO:'',eleNumber:'',date:new Date().toISOString().slice(0,10),sites:[],savedAt:Date.now()};
+  currentJob={id:'job_'+Date.now(),wo:'',jobType:'',loc:'',orderer:'',caeNumber:'',jeNumber:'',downerWO:'',eleNumber:'',sites:[],savedAt:Date.now()};
   addSiteToJob('Site 1');
   renderJobView();
-  show('view-job'); hide('view-tpl');
+  show('view-job'); hide('view-home');
+}
+async function openJob(id){
+  const jobs=await dbGetAll('jobs');
+  const j=jobs.find(x=>x.id===id);
+  if(!j)return;
+  currentJob=JSON.parse(JSON.stringify(j));
+  // Sync siteCounter to the highest existing site number to avoid ID collisions
+  (currentJob.sites||[]).forEach(s=>{
+    const n=parseInt((s.id||'').replace('site_',''));
+    if(!isNaN(n) && n>siteCounter) siteCounter=n;
+  });
+  renderJobView();
+  show('view-job'); hide('view-home');
 }
 function renderJobView(){
   document.getElementById('j-wo').value=currentJob.wo||'';
@@ -460,7 +522,6 @@ function renderJobView(){
   document.getElementById('j-je').value=currentJob.jeNumber||'';
   document.getElementById('j-downer-wo').value=currentJob.downerWO||'';
   document.getElementById('j-ele').value=currentJob.eleNumber||'';
-  document.getElementById('j-date').value=currentJob.date||'';
   applyJobTypeFields();
   document.getElementById('job-heading').textContent=currentJob.wo?'WO: '+currentJob.wo:'New Job';
   setSaveBar('Auto-saving…',false);
@@ -475,7 +536,6 @@ function collectJobFields(){
   currentJob.jeNumber=document.getElementById('j-je').value.trim();
   currentJob.downerWO=document.getElementById('j-downer-wo').value.trim();
   currentJob.eleNumber=document.getElementById('j-ele').value.trim();
-  currentJob.date=document.getElementById('j-date').value;
 }
 
 function applyJobTypeFields(){
@@ -512,13 +572,14 @@ function scheduleAutoSave(){
   setSaveBar('Saving…',false);
   autoSaveTimer=setTimeout(()=>performJobSave(false),1500);
 }
-function performJobSave(silent){
+async function performJobSave(silent){
   if(!currentJob)return;
   currentJob.savedAt=Date.now();
+  await dbPut('jobs',currentJob);
   if(_hubDocId && window.parent !== window){
     window.parent.postMessage({type:'DRAFT_SAVE',docId:_hubDocId,payload:JSON.parse(JSON.stringify(currentJob))},'*');
   }
-  if(!silent){setSaveBar('✓ Saved',true);}
+  if(!silent){setSaveBar('✓ Draft saved',true);showToast('✓ Saved');}
 }
 function setSaveBar(msg,ok){
   const el=document.getElementById('job-save-bar');
@@ -995,23 +1056,12 @@ function saveSiteAsTemplate(sid){
 //  TEMPLATE EDITOR
 // ═══════════════════════════════════════════
 let tplSiteCounter=0;
-function openTemplateManager(){
-  show('view-tpl'); hide('view-job');
-  show('view-tpl-list'); hide('view-tpl-edit');
-  renderTemplates();
-}
-function closeTemplateManager(){
-  show('view-job'); hide('view-tpl');
-}
-function cancelTemplateEdit(){
-  show('view-tpl-list'); hide('view-tpl-edit');
-}
 function newTemplate(){
   currentTpl={id:'tpl_'+Date.now(),name:'',sites:[],savedAt:Date.now()};
+  // Single site per template - no multi-group
   currentTpl.sites.push({id:'tsite_'+(++tplSiteCounter),name:'Template Items',items:[],open:true});
   renderTplView();
-  document.getElementById('tpl-edit-label').textContent='New Template';
-  hide('view-tpl-list'); show('view-tpl-edit');
+  show('view-tpl'); hide('view-home');
 }
 async function openTemplate(id){
   const tpls=await dbGetAll('templates');
@@ -1019,8 +1069,7 @@ async function openTemplate(id){
   if(!t)return;
   currentTpl=JSON.parse(JSON.stringify(t));
   renderTplView();
-  document.getElementById('tpl-edit-label').textContent=t.name||'Edit Template';
-  hide('view-tpl-list'); show('view-tpl-edit');
+  show('view-tpl'); hide('view-home');
 }
 function addTplSite(name){
   if(!name)name='Group '+(currentTpl.sites.length+1);
@@ -1115,14 +1164,20 @@ async function saveTemplate(){
     currentTpl.savedAt=Date.now();
     await dbPut('templates',currentTpl);
     showToast('✓ Template saved');
-    await renderTemplates();
-    show('view-tpl-list'); hide('view-tpl-edit');
+    goHome();
+    switchTab('tpl');
   });
 }
 
 // ═══════════════════════════════════════════
 //  DELETE CONFIRMS
 // ═══════════════════════════════════════════
+function confirmDeleteJob(e,id,wo){
+  e.stopPropagation();
+  showConfirm('Delete Job?',`Delete job "${wo}"? This cannot be undone.`,async()=>{
+    await dbDelete('jobs',id); renderJobs();
+  },'Delete');
+}
 function confirmDeleteTpl(e,id,name){
   e.stopPropagation();
   showConfirm('Delete Template?',`Delete template "${name}"? This cannot be undone.`,async()=>{
@@ -1141,12 +1196,12 @@ function confirmDeleteTplSite(sid,name){
     renderTplSites();
   },'Delete');
 }
-function jobMenu(){}
+function jobMenu(){show('job-menu-overlay');}
 function closeJobMenu(){hide('job-menu-overlay');}
 function deleteJobFromMenu(){
   closeJobMenu();
   showConfirm('Delete This Job?','Delete this job permanently? This cannot be undone.',async()=>{
-    currentJob=null;
+    if(currentJob){await dbDelete('jobs',currentJob.id);currentJob=null;}
     goHome();
   },'Delete');
 }
@@ -1219,12 +1274,14 @@ function fmtDateLong(iso){if(!iso)return'';const[y,m,d]=iso.split('-');const mn=
 // ═══════════════════════════════════════════
 async function generatePDF(){
   collectJobFields();
-  if(!currentJob.jobType){alert('Please select a Job Type first.');return;}
-  if(!currentJob.wo && currentJob.jobType!=='STORE STOCK REQUIRED'){
-    alert('Please enter a WO Number first.');return;
+  if(!_exportMode){
+    if(!currentJob.jobType){alert('Please select a Job Type first.');return;}
+    if(!currentJob.wo && currentJob.jobType!=='STORE STOCK REQUIRED'){
+      alert('Please enter a WO Number first.');return;
+    }
+    const allItems=currentJob.sites.reduce((a,s)=>a+(s.items||[]).length,0);
+    if(!allItems){alert('Add at least one item before generating a PDF.');return;}
   }
-  const allItems=currentJob.sites.reduce((a,s)=>a+(s.items||[]).length,0);
-  if(!allItems){alert('Add at least one item before generating a PDF.');return;}
 
   const {PDFDocument,rgb,StandardFonts}=PDFLib;
   const pdfDoc=await PDFDocument.create();
@@ -1267,9 +1324,7 @@ async function generatePDF(){
     page.drawText(s,{x,y:ty,size,font,color:rgb(...col)});
   }
 
-  const today=currentJob.date
-    ? new Date(currentJob.date+'T12:00:00').toLocaleDateString('en-NZ',{day:'2-digit',month:'short',year:'numeric'})
-    : new Date().toLocaleDateString('en-NZ',{day:'2-digit',month:'short',year:'numeric'});
+  const today=new Date().toLocaleDateString('en-NZ',{day:'2-digit',month:'short',year:'numeric'});
 
   // ── COVER HEADER ──────────────────────────────────────────────
   // Amber bar at top
@@ -1366,24 +1421,27 @@ async function generatePDF(){
 
   // ── SAVE & DOWNLOAD ───────────────────────────────────────────
   const bytes=await pdfDoc.save();
-  const blob=new Blob([bytes],{type:'application/pdf'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
   const fname='GearOrder'+(currentJob.wo?'_'+currentJob.wo:'')+'_'+today.replace(/ /g,'')+'.pdf';
-  a.href=url; a.download=fname; a.click();
-  URL.revokeObjectURL(url);
-  showToast('✓ PDF downloaded');
-
-  // Upload to hub when embedded in a job folder
-  if (window.parent !== window && _hubDocId) {
+  if(!_exportMode){
+    const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
+    const a=document.createElement('a');
+    a.href=url; a.download=fname; a.click();
+    URL.revokeObjectURL(url);
+    showToast('✓ PDF downloaded');
+  }
+  if(window.parent!==window&&_hubDocId){
     const reader=new FileReader();
     reader.onloadend=()=>{
-      window.parent.postMessage({type:'SAVE_PDF',docId:_hubDocId,pdfDataUri:reader.result,formPayload:JSON.parse(JSON.stringify(currentJob)),fileName:fname},'*');
-      window.parent.postMessage({type:'APP_DONE'},'*');
+      if(_exportMode){
+        _exportMode=false;
+        window.parent.postMessage({type:'EXPORT_PDF_READY',docId:_hubDocId,pdfDataUri:reader.result},'*');
+      }else{
+        window.parent.postMessage({type:'SAVE_PDF',docId:_hubDocId,pdfDataUri:reader.result,formPayload:JSON.parse(JSON.stringify(currentJob)),fileName:fname},'*');
+      }
     };
     reader.readAsDataURL(new Blob([bytes],{type:'application/pdf'}));
-  } else {
-    newJob();
+  }else{
+    _exportMode=false;
   }
 }
 </script>
@@ -1428,6 +1486,19 @@ async function generatePDF(){
   }
   window.addEventListener('message', function(e){
     if (e.data && e.data.type === 'JOB_CONTEXT') applyContext(e.data);
+    if (e.data && e.data.type === 'EXPORT_REQUEST') {
+      _hubDocId = e.data.docId;
+      _exportMode = true;
+      var apply = function() {
+        if (e.data.payload && typeof currentJob !== 'undefined') {
+          currentJob = JSON.parse(JSON.stringify(e.data.payload));
+          if (typeof renderJobView === 'function') renderJobView();
+        }
+        setTimeout(function() { if (typeof generatePDF === 'function') generatePDF(); }, 200);
+      };
+      if (document.getElementById('j-wo')) apply();
+      else document.addEventListener('DOMContentLoaded', apply);
+    }
   });
   if (window.parent !== window) window.parent.postMessage({ type:'EMBED_READY', app:'storeman' }, '*');
 })();
