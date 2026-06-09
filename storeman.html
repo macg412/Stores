@@ -446,6 +446,7 @@ function dbDelete(store,id){return new Promise((res,rej)=>{const tx=db.transacti
 //  STATE
 // ═══════════════════════════════════════════
 let _hubDocId=null;
+let _exportMode=false;
 let currentJob=null;   // {id, wo, jobType, loc, orderer, caeNumber, jeNumber, downerWO, eleNumber, sites:[...], savedAt}
 let currentTpl=null;   // {id, name, sites:[...]}
 let autoSaveTimer=null;
@@ -1455,7 +1456,12 @@ async function doPDF(mode, siteId, silent){
   if(window.parent!==window){
     const reader=new FileReader();
     reader.onloadend=()=>{
-      window.parent.postMessage({type:'DOWNLOAD_PDF',pdfDataUri:reader.result,fileName:fname},'*');
+      if(_exportMode){
+        _exportMode=false;
+        window.parent.postMessage({type:'EXPORT_PDF_READY',docId:_hubDocId,pdfDataUri:reader.result},'*');
+      } else {
+        window.parent.postMessage({type:'DOWNLOAD_PDF',pdfDataUri:reader.result,fileName:fname},'*');
+      }
     };
     reader.readAsDataURL(blob);
   } else {
@@ -1538,6 +1544,26 @@ async function submitAndClose(){
   }
   window.addEventListener('message', function(e){
     if (e.data && e.data.type === 'JOB_CONTEXT') applyContext(e.data);
+    if (e.data && e.data.type === 'EXPORT_REQUEST') {
+      _hubDocId = e.data.docId;
+      _exportMode = true;
+      var doExport = function() {
+        if (e.data.payload && typeof currentJob !== 'undefined') {
+          currentJob = JSON.parse(JSON.stringify(e.data.payload));
+          if (typeof renderJobView === 'function') renderJobView();
+        }
+        setTimeout(function() {
+          if (typeof doPDF === 'function') {
+            doPDF('total', null).catch(function() {
+              _exportMode = false;
+              window.parent.postMessage({type:'EXPORT_PDF_READY',docId:_hubDocId,pdfDataUri:null},'*');
+            });
+          }
+        }, 200);
+      };
+      if (document.getElementById('j-wo')) doExport();
+      else document.addEventListener('DOMContentLoaded', doExport);
+    }
   });
   if (window.parent !== window) window.parent.postMessage({ type:'EMBED_READY', app:'storeman' }, '*');
 })();
