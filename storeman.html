@@ -132,6 +132,19 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
 .qty-val::-webkit-inner-spin-button,.qty-val::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
 .ir-del{background:none;border:none;color:var(--muted);font-size:1.3rem;cursor:pointer;padding:8px;border-radius:8px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;}
 .ir-del:hover{color:var(--danger);}
+.uom-toggle{background:var(--surface3);border:1px solid var(--border2);color:var(--muted);font-size:.65rem;font-weight:800;border-radius:4px;padding:5px 8px;cursor:pointer;white-space:nowrap;letter-spacing:.04em;font-family:var(--font);flex-shrink:0;line-height:1;}
+.uom-toggle.mtr{background:rgba(59,130,246,.15);border-color:var(--info);color:var(--info);}
+.nonstock-input{background:transparent;border:none;border-bottom:1px solid var(--border2);color:var(--text);font-family:var(--font);font-size:.88rem;font-weight:600;padding:3px 0;outline:none;width:100%;min-width:0;}
+.nonstock-input:focus{border-bottom-color:var(--accent);}
+.pending-row .ir-info{border-left:3px solid var(--accent);padding-left:8px;}
+.pending-row .ir-desc{color:var(--accent);}
+.reminder-slot{display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);}
+.reminder-slot:last-child{border-bottom:none;}
+.reminder-fields{flex:1;display:flex;flex-direction:column;gap:6px;}
+.reminder-note-input{background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:.85rem;padding:7px 10px;outline:none;width:100%;}
+.reminder-note-input:focus{border-color:var(--accent);}
+.reminder-cat-select{background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--font);font-size:.82rem;padding:7px 10px;outline:none;cursor:pointer;}
+.reminder-cat-select:focus{border-color:var(--accent);}
 
 /* ── STICKY FOOTER ── */
 .sticky-footer{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:10px 14px;display:flex;gap:8px;z-index:300;}
@@ -282,6 +295,12 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
     <div class="tpl-editor" id="tpl-editor-area">
       <div class="slabel" style="margin-bottom:10px;">Template Items</div>
       <div id="tpl-sites-container"></div>
+      <div style="margin-top:20px;">
+        <div class="slabel" style="margin-bottom:8px;">Site-Specific Reminders</div>
+        <div style="font-size:.76rem;color:var(--muted);margin-bottom:10px;">Add a prompt for items that vary site-to-site (e.g. correct bolt length). Users will be asked to select these when applying the template.</div>
+        <div id="tpl-reminders-container"></div>
+        <button class="btn btn-ghost btn-xs" style="margin-top:8px;" onclick="addTplReminder()">＋ Add Reminder</button>
+      </div>
     </div>
     <div class="sticky-footer">
       <button class="btn btn-ghost" onclick="cancelTemplateEdit()">✕ Cancel</button>
@@ -373,8 +392,9 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
       <span id="search-count" class="search-count"></span>
     </div>
     <div class="search-results" id="search-results"></div>
-    <div class="search-done-bar">
-      <button class="btn btn-danger btn-full search-done-btn" onclick="closeSearch()">✕ Close Search</button>
+    <div class="search-done-bar" style="display:flex;gap:8px;">
+      <button class="btn btn-ghost btn-sm" style="flex-shrink:0;" onclick="addNonStockFromSearch()">＋ Non-Stock</button>
+      <button class="btn btn-danger btn-full search-done-btn" onclick="closeSearch()">✕ Close</button>
     </div>
   </div>
 </div>
@@ -613,6 +633,7 @@ function renderSites(){
         <div id="site-items-${site.id}"></div>
         <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
           <button class="btn btn-ghost btn-sm" onclick="openSearch('${site.id}','job')">🔍 Add Items</button>
+          <button class="btn btn-ghost btn-xs" onclick="addNonStockItem('${site.id}','job')">＋ Non-Stock</button>
           <button class="btn btn-ghost btn-xs" onclick="applyTemplate('${site.id}')">📋 From Template</button>
           <button class="btn btn-ghost btn-xs" onclick="saveSiteAsTemplate('${site.id}')">💾 Save as Template</button>
         </div>
@@ -642,19 +663,48 @@ function renderSiteItems(sid){
   const cnt=document.getElementById('site-count-'+sid);
   if(cnt)cnt.textContent=site.items.length+' item'+(site.items.length!==1?'s':'');
   if(!site.items.length){el.innerHTML='<div style="color:var(--muted);font-size:.8rem;padding:6px 0 2px;">No items yet — tap Add Items to search.</div>';return;}
-  el.innerHTML=site.items.map((item,ii)=>`
-    <div class="item-row">
+  el.innerHTML=site.items.map((item,ii)=>{
+    if(item.pending){
+      return `<div class="item-row pending-row">
       <div class="ir-info">
-        <div class="ir-desc">${esc(item.b)}</div>
-        <div class="ir-meta">${esc(item.a)}${item.c?' · '+esc(item.c):''}${item.d?' · <span class="si-cat">'+esc(item.d)+'</span>':''}</div>
+        <div class="ir-desc">⚠ ${esc(item.note||'Site-Specific Item Required')}</div>
+        <div class="ir-meta">Tap Select to choose${item.category?' <span class="si-cat">'+esc(item.category)+'</span>':''} item</div>
       </div>
       <div class="ir-controls">
+        <button class="btn btn-accent btn-xs" onclick="selectPendingItem('${sid}',${ii})">Select</button>
+        <button class="ir-del" onclick="removeItem('${sid}',${ii})">✕</button>
+      </div>
+    </div>`;
+    }
+    if(item.nonStock){
+      return `<div class="item-row">
+      <div class="ir-info">
+        <input type="text" class="nonstock-input" value="${escAttr(item.b)}" placeholder="Description (non-stock)…" oninput="setNonStockDesc('${sid}',${ii},this.value)">
+        <div class="ir-meta" style="font-style:italic;font-size:.68rem;">Non-Stock · No IV Code</div>
+      </div>
+      <div class="ir-controls">
+        <button id="uom-${sid}-${ii}" class="uom-toggle${(item.uom||'EA')==='Mtr'?' mtr':''}" onclick="toggleUom('${sid}',${ii})">${item.uom||'EA'}</button>
         <button class="qty-btn qty-minus" ontouchstart="" onclick="changeQty('${sid}',${ii},-1)">−</button>
         <input type="number" class="qty-val" id="qv-${sid}-${ii}" value="${item.qty||1}" min="1" onclick="this.select()" oninput="setQty('${sid}',${ii},this.value)">
         <button class="qty-btn qty-plus" ontouchstart="" onclick="changeQty('${sid}',${ii},1)">＋</button>
         <button class="ir-del" onclick="removeItem('${sid}',${ii})">✕</button>
       </div>
-    </div>`).join('');
+    </div>`;
+    }
+    return `<div class="item-row">
+      <div class="ir-info">
+        <div class="ir-desc">${esc(item.b)}</div>
+        <div class="ir-meta">${esc(item.a)}${item.c?' · '+esc(item.c):''}${item.d?' · <span class="si-cat">'+esc(item.d)+'</span>':''}</div>
+      </div>
+      <div class="ir-controls">
+        <button id="uom-${sid}-${ii}" class="uom-toggle${(item.uom||'EA')==='Mtr'?' mtr':''}" onclick="toggleUom('${sid}',${ii})">${item.uom||'EA'}</button>
+        <button class="qty-btn qty-minus" ontouchstart="" onclick="changeQty('${sid}',${ii},-1)">−</button>
+        <input type="number" class="qty-val" id="qv-${sid}-${ii}" value="${item.qty||1}" min="1" onclick="this.select()" oninput="setQty('${sid}',${ii},this.value)">
+        <button class="qty-btn qty-plus" ontouchstart="" onclick="changeQty('${sid}',${ii},1)">＋</button>
+        <button class="ir-del" onclick="removeItem('${sid}',${ii})">✕</button>
+      </div>
+    </div>`;
+  }).join('');
 }
 function changeQty(sid,ii,delta){
   const site=currentJob.sites.find(s=>s.id===sid);
@@ -729,6 +779,9 @@ function applyTplToSite(tplIdx){
       site.items.push({...item,qty:item.qty||1});
     });
   });
+  (tpl.reminders||[]).forEach(r=>{
+    site.items.push({pending:true, note:r.note, category:r.category});
+  });
   renderSiteItems(sid);
   scheduleAutoSave();
   overlay.remove();
@@ -752,6 +805,7 @@ function closeSearch(){
   const popup=document.getElementById('sq-popup'); if(popup) popup.remove();
   hide('search-modal');
   searchTarget=null;
+  _replacePendingTarget=null;
 }
 function handleSearchOverlayClick(e){
   // Only close if tapping the dark backdrop, not the modal-box itself
@@ -926,7 +980,15 @@ function sqConfirmAdd(hitIdx){
 
   if(mode==='job'){
     const site=currentJob.sites.find(s=>s.id===sid);
-    if(site){site.items.push({...item,qty});renderSiteItems(sid);scheduleAutoSave();}
+    if(site){
+      if(_replacePendingTarget&&_replacePendingTarget.sid===sid){
+        site.items.splice(_replacePendingTarget.ii,1,{...item,qty});
+        _replacePendingTarget=null;
+      } else {
+        site.items.push({...item,qty});
+      }
+      renderSiteItems(sid);scheduleAutoSave();
+    }
   } else {
     const site=currentTpl.sites.find(s=>s.id===sid);
     if(site){site.items.push({...item,qty});renderTplSiteItems(sid);}
@@ -959,7 +1021,7 @@ function sendOrder(){
   collectJobFields();
   if(!currentJob.jobType){alert('Please select a Job Type first.');document.getElementById('j-jobtype').focus();return;}
   if(!currentJob.wo && currentJob.jobType!=='STORE STOCK REQUIRED'){alert('Please enter a WO Number first.');document.getElementById('j-wo').focus();return;}
-  const allItems=currentJob.sites.reduce((a,s)=>a+(s.items||[]).length,0);
+  const allItems=currentJob.sites.reduce((a,s)=>a+(s.items||[]).filter(x=>!x.pending).length,0);
   if(!allItems){alert('Add at least one item before sending.');return;}
 
   const div='─'.repeat(52);
@@ -1041,7 +1103,7 @@ function cancelTemplateEdit(){
   show('view-tpl-list'); hide('view-tpl-edit');
 }
 function newTemplate(){
-  currentTpl={id:'tpl_'+Date.now(),name:'',sites:[],savedAt:Date.now()};
+  currentTpl={id:'tpl_'+Date.now(),name:'',sites:[],reminders:[],savedAt:Date.now()};
   currentTpl.sites.push({id:'tsite_'+(++tplSiteCounter),name:'Template Items',items:[],open:true});
   renderTplView();
   document.getElementById('tpl-edit-label').textContent='New Template';
@@ -1062,8 +1124,10 @@ function addTplSite(name){
   renderTplView();
 }
 function renderTplView(){
-  document.getElementById('tpl-heading').textContent=currentTpl.name||'Edit Template';
+  const h=document.getElementById('tpl-heading');
+  if(h) h.textContent=currentTpl.name||'Edit Template';
   renderTplSites();
+  renderTplReminders();
 }
 function renderTplSites(){
   const c=document.getElementById('tpl-sites-container');
@@ -1083,8 +1147,9 @@ function renderTplSites(){
       </div>
       <div class="site-body" id="tsite-body-${site.id}" ${site.open===false?'style="display:none"':''}>
         <div id="tsite-items-${site.id}"></div>
-        <div style="margin-top:10px;">
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
           <button class="btn btn-ghost btn-sm" onclick="openSearch('${site.id}','tpl')">🔍 Add Items</button>
+          <button class="btn btn-ghost btn-xs" onclick="addNonStockItem('${site.id}','tpl')">＋ Non-Stock</button>
         </div>
       </div>`;
     c.appendChild(div);
@@ -1109,19 +1174,36 @@ function renderTplSiteItems(sid){
   const cnt=document.getElementById('tsite-count-'+sid);
   if(cnt)cnt.textContent=site.items.length+' item'+(site.items.length!==1?'s':'');
   if(!site.items.length){el.innerHTML='<div style="color:var(--muted);font-size:.8rem;padding:6px 0 2px;">No items yet.</div>';return;}
-  el.innerHTML=site.items.map((item,ii)=>`
-    <div class="item-row">
+  el.innerHTML=site.items.map((item,ii)=>{
+    if(item.nonStock){
+      return `<div class="item-row">
       <div class="ir-info">
-        <div class="ir-desc">${esc(item.b)}</div>
-        <div class="ir-meta">${esc(item.a)}${item.c?' · '+esc(item.c):''} <span class="si-cat">${esc(item.d)}</span></div>
+        <input type="text" class="nonstock-input" value="${escAttr(item.b)}" placeholder="Description (non-stock)…" oninput="setNonStockDescTpl('${sid}',${ii},this.value)">
+        <div class="ir-meta" style="font-style:italic;font-size:.68rem;">Non-Stock · No IV Code</div>
       </div>
       <div class="ir-controls">
+        <button id="tuom-${sid}-${ii}" class="uom-toggle${(item.uom||'EA')==='Mtr'?' mtr':''}" onclick="toggleTplUom('${sid}',${ii})">${item.uom||'EA'}</button>
         <button class="qty-btn qty-minus" ontouchstart="" onclick="changeTplQty('${sid}',${ii},-1)">−</button>
         <input type="number" class="qty-val" id="tqv-${sid}-${ii}" value="${item.qty||1}" min="1" onclick="this.select()" oninput="setTplQty('${sid}',${ii},this.value)">
         <button class="qty-btn qty-plus" ontouchstart="" onclick="changeTplQty('${sid}',${ii},1)">＋</button>
         <button class="ir-del" onclick="removeTplItem('${sid}',${ii})">✕</button>
       </div>
-    </div>`).join('');
+    </div>`;
+    }
+    return `<div class="item-row">
+      <div class="ir-info">
+        <div class="ir-desc">${esc(item.b)}</div>
+        <div class="ir-meta">${esc(item.a)}${item.c?' · '+esc(item.c):''}${item.d?' <span class="si-cat">'+esc(item.d)+'</span>':''}</div>
+      </div>
+      <div class="ir-controls">
+        <button id="tuom-${sid}-${ii}" class="uom-toggle${(item.uom||'EA')==='Mtr'?' mtr':''}" onclick="toggleTplUom('${sid}',${ii})">${item.uom||'EA'}</button>
+        <button class="qty-btn qty-minus" ontouchstart="" onclick="changeTplQty('${sid}',${ii},-1)">−</button>
+        <input type="number" class="qty-val" id="tqv-${sid}-${ii}" value="${item.qty||1}" min="1" onclick="this.select()" oninput="setTplQty('${sid}',${ii},this.value)">
+        <button class="qty-btn qty-plus" ontouchstart="" onclick="changeTplQty('${sid}',${ii},1)">＋</button>
+        <button class="ir-del" onclick="removeTplItem('${sid}',${ii})">✕</button>
+      </div>
+    </div>`;
+  }).join('');
 }
 function changeTplQty(sid,ii,delta){
   const site=currentTpl.sites.find(s=>s.id===sid);
@@ -1142,6 +1224,118 @@ function removeTplItem(sid,ii){
   site.items.splice(ii,1);
   renderTplSiteItems(sid);
 }
+
+// ─── UOM TOGGLE ─────────────────────────────
+function toggleUom(sid,ii){
+  const site=currentJob.sites.find(s=>s.id===sid);
+  if(!site||!site.items[ii]) return;
+  site.items[ii].uom=(site.items[ii].uom==='Mtr')?'EA':'Mtr';
+  const btn=document.getElementById('uom-'+sid+'-'+ii);
+  if(btn){btn.textContent=site.items[ii].uom;btn.className='uom-toggle'+(site.items[ii].uom==='Mtr'?' mtr':'');}
+  scheduleAutoSave();
+}
+function toggleTplUom(sid,ii){
+  const site=currentTpl.sites.find(s=>s.id===sid);
+  if(!site||!site.items[ii]) return;
+  site.items[ii].uom=(site.items[ii].uom==='Mtr')?'EA':'Mtr';
+  const btn=document.getElementById('tuom-'+sid+'-'+ii);
+  if(btn){btn.textContent=site.items[ii].uom;btn.className='uom-toggle'+(site.items[ii].uom==='Mtr'?' mtr':'');}
+}
+
+// ─── NON-STOCK ITEMS ────────────────────────
+function addNonStockItem(sid,mode){
+  const item={nonStock:true,a:'',b:'',c:'',d:'',qty:1,uom:'EA'};
+  if(mode==='job'){
+    const site=currentJob.sites.find(s=>s.id===sid);
+    if(site){site.items.push(item);renderSiteItems(sid);scheduleAutoSave();}
+  } else {
+    const site=currentTpl.sites.find(s=>s.id===sid);
+    if(site){site.items.push(item);renderTplSiteItems(sid);}
+  }
+}
+function setNonStockDesc(sid,ii,val){
+  const site=currentJob.sites.find(s=>s.id===sid);
+  if(site&&site.items[ii]) {site.items[ii].b=val;scheduleAutoSave();}
+}
+function setNonStockDescTpl(sid,ii,val){
+  const site=currentTpl.sites.find(s=>s.id===sid);
+  if(site&&site.items[ii]) site.items[ii].b=val;
+}
+function addNonStockFromSearch(){
+  if(!searchTarget) return;
+  const {sid,mode}=searchTarget;
+  const replaceTarget=_replacePendingTarget;
+  closeSearch();
+  const newItem={nonStock:true,a:'',b:'',c:'',d:'',qty:1,uom:'EA'};
+  if(mode==='job'){
+    const site=currentJob.sites.find(s=>s.id===sid);
+    if(site){
+      if(replaceTarget&&replaceTarget.sid===sid){site.items.splice(replaceTarget.ii,1,newItem);}
+      else{site.items.push(newItem);}
+      renderSiteItems(sid);scheduleAutoSave();
+    }
+  } else {
+    const site=currentTpl.sites.find(s=>s.id===sid);
+    if(site){site.items.push(newItem);renderTplSiteItems(sid);}
+  }
+}
+
+// ─── PENDING ITEM SELECTION ─────────────────
+let _replacePendingTarget=null;
+function selectPendingItem(sid,ii){
+  const site=currentJob.sites.find(s=>s.id===sid);
+  if(!site||!site.items[ii]) return;
+  const pending=site.items[ii];
+  _replacePendingTarget={sid,ii};
+  openSearch(sid,'job');
+  if(pending.category){
+    setTimeout(()=>{
+      document.getElementById('cat-filter').value=pending.category;
+      doSearch();
+    },50);
+  }
+}
+
+// ─── TEMPLATE REMINDERS ─────────────────────
+let reminderCounter=0;
+const CATS=['ARM','ARM BRACE','BOLT','BOX','BOX TUDS','CABLE','CABLE CLAMP','CABLE COVER','CABLE GUARD','CONDUCTOR','DRAW WIRE','EARTH','FUSE','GUARD','HEAT SHRINK','INSULATOR','JOIN','KIT','LIGHTNING ARRESTOR','PAD','PIPE','POLE','SIGN','STAY','STEEL','SWITCH','TAPE','TOOL','TRANSFORMER','WASHER'];
+function renderTplReminders(){
+  const c=document.getElementById('tpl-reminders-container');
+  if(!c) return;
+  const reminders=currentTpl.reminders||[];
+  if(!reminders.length){
+    c.innerHTML='<div style="color:var(--muted);font-size:.8rem;padding:4px 0;">None — click ＋ Add Reminder below to create one.</div>';
+    return;
+  }
+  c.innerHTML=reminders.map((r,i)=>`
+    <div class="reminder-slot">
+      <div class="reminder-fields">
+        <input type="text" class="reminder-note-input" placeholder="e.g. Select correct length bolt for this site" value="${escAttr(r.note||'')}" oninput="setReminderNote(${i},this.value)">
+        <select class="reminder-cat-select" onchange="setReminderCategory(${i},this.value)">
+          <option value="">— Any Category —</option>
+          ${CATS.map(cat=>`<option value="${cat}"${r.category===cat?' selected':''}>${cat}</option>`).join('')}
+        </select>
+      </div>
+      <button class="ir-del" onclick="removeTplReminder(${i})" title="Remove reminder">✕</button>
+    </div>`).join('');
+}
+function addTplReminder(){
+  if(!currentTpl.reminders) currentTpl.reminders=[];
+  currentTpl.reminders.push({id:'rem_'+(++reminderCounter),note:'',category:''});
+  renderTplReminders();
+}
+function removeTplReminder(i){
+  if(!currentTpl.reminders) return;
+  currentTpl.reminders.splice(i,1);
+  renderTplReminders();
+}
+function setReminderNote(i,val){
+  if(currentTpl.reminders&&currentTpl.reminders[i]) currentTpl.reminders[i].note=val;
+}
+function setReminderCategory(i,val){
+  if(currentTpl.reminders&&currentTpl.reminders[i]) currentTpl.reminders[i].category=val;
+}
+
 async function saveTemplate(){
   showTplName('Name this Template',currentTpl.name||'',async name=>{
     if(!name)return;
@@ -1264,7 +1458,7 @@ function showPdfPicker(){
   collectJobFields();
   if(!currentJob.jobType){alert('Please select a Job Type first.');return;}
   if(!currentJob.wo&&currentJob.jobType!=='STORE STOCK REQUIRED'){alert('Please enter a WO Number first.');return;}
-  const allItems=currentJob.sites.reduce((a,s)=>a+(s.items||[]).length,0);
+  const allItems=currentJob.sites.reduce((a,s)=>a+(s.items||[]).filter(x=>!x.pending).length,0);
   if(!allItems){alert('Add at least one item before generating a PDF.');return;}
   show('pdf-picker');
 }
@@ -1394,7 +1588,7 @@ async function doPDF(mode, siteId, silent){
       txt(item.a||'', colCode, y, 8.5, fontBold, DARK, colCodeW);
       txt(item.b||'', colDesc, y, 8.5, fontReg,  DARK, colDescW);
       txt(item.c||'', colSpec, y, 8,   fontReg,  MID,  colSpecW);
-      txt('EA',       colUom,  y, 8.5, fontReg,  DARK);
+      txt(item.uom||'EA', colUom, y, 8.5, fontReg, DARK);
       txt(String(item.qty||1), colQty, y, 8.5, fontBold, DARK);
       y-=13;
     });
@@ -1402,11 +1596,11 @@ async function doPDF(mode, siteId, silent){
   }
 
   if(mode==='total'){
-    // Consolidate all items, sum duplicates
+    // Consolidate all items, sum duplicates (skip pending placeholder rows)
     const map={};
     currentJob.sites.forEach(site=>{
-      (site.items||[]).forEach(item=>{
-        const k=item.a+'||'+item.b+'||'+(item.c||'');
+      (site.items||[]).filter(x=>!x.pending).forEach(item=>{
+        const k=(item.a||'')+'||'+(item.b||'')+'||'+(item.c||'')+'||'+(item.uom||'EA');
         if(map[k]){map[k].qty+=(item.qty||1);}
         else{map[k]={...item,qty:item.qty||1};}
       });
@@ -1414,26 +1608,28 @@ async function doPDF(mode, siteId, silent){
     drawItems(Object.values(map));
 
   } else if(mode==='bysite'){
-    const sitesWithItems=currentJob.sites.filter(s=>(s.items||[]).length>0);
+    const sitesWithItems=currentJob.sites.filter(s=>(s.items||[]).some(x=>!x.pending));
     sitesWithItems.forEach((site,si)=>{
+      const siteItems=site.items.filter(x=>!x.pending);
       checkY(50);
       // Site sub-header
       page.drawRectangle({x:ML,y:y-4,width:CW,height:18,color:rgb(0.12,0.12,0.15)});
       txt(site.name.toUpperCase(), ML+6, y+1, 9, fontBold, WHITE);
-      txt(site.items.length+' item'+(site.items.length!==1?'s':''), ML+CW-60, y+1, 8, fontReg, [0.7,0.7,0.7]);
+      txt(siteItems.length+' item'+(siteItems.length!==1?'s':''), ML+CW-60, y+1, 8, fontReg, [0.7,0.7,0.7]);
       y-=22;
-      drawItems(site.items);
+      drawItems(siteItems);
       if(si<sitesWithItems.length-1){drawLine(ML,y,ML+CW,y,0.3,MID);y-=10;}
     });
 
   } else if(mode==='singlesite'){
     const site=currentJob.sites.find(s=>s.id===siteId);
     if(site){
+      const siteItems=site.items.filter(x=>!x.pending);
       // Site label above table
       page.drawRectangle({x:ML,y:y-4,width:CW,height:18,color:rgb(0.12,0.12,0.15)});
       txt(site.name.toUpperCase(), ML+6, y+1, 9, fontBold, WHITE);
       y-=22;
-      drawItems(site.items);
+      drawItems(siteItems);
     }
   }
 
@@ -1485,7 +1681,7 @@ async function doPDF(mode, siteId, silent){
 async function submitAndClose(){
   collectJobFields();
   if(!currentJob.jobType||(!currentJob.wo&&currentJob.jobType!=='STORE STOCK REQUIRED')||
-     !currentJob.sites.reduce((a,s)=>a+(s.items||[]).length,0)) return;
+     !currentJob.sites.reduce((a,s)=>a+(s.items||[]).filter(x=>!x.pending).length,0)) return;
   const {bytes,fname}=await doPDF('total',null)||{};
   if(window.parent!==window && _hubDocId){
     const payload=JSON.parse(JSON.stringify(currentJob));
