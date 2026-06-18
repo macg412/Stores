@@ -188,6 +188,26 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
 
 /* Template editor */
 .tpl-editor{padding:14px 16px 100px;}
+
+/* ── CATALOGUE ADMIN ── */
+.cat-admin-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);}
+.cat-admin-row:last-child{border-bottom:none;}
+.cat-admin-info{flex:1;min-width:0;}
+.cat-admin-code{font-size:.7rem;font-weight:700;color:var(--muted);letter-spacing:.04em;margin-bottom:1px;}
+.cat-admin-desc{font-size:.88rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cat-admin-meta{font-size:.7rem;color:var(--muted);margin-top:2px;}
+.cat-admin-btns{display:flex;gap:6px;flex-shrink:0;}
+.cat-admin-badge{display:inline-block;font-size:.58rem;font-weight:800;letter-spacing:.06em;padding:2px 5px;border-radius:3px;text-transform:uppercase;margin-right:5px;vertical-align:middle;}
+.cat-admin-badge.custom{background:rgba(59,130,246,.2);color:var(--info);}
+.cat-admin-badge.edited{background:rgba(245,158,11,.2);color:var(--accent);}
+.cat-item-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:850;display:flex;flex-direction:column;}
+.cat-item-box{background:var(--surface);border-radius:14px 14px 0 0;margin-top:auto;max-height:85vh;overflow-y:auto;padding:20px 16px 100px;}
+.cat-item-title{font-size:1rem;font-weight:700;margin-bottom:16px;}
+.cat-field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
+.cat-field label{font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+.cat-field input,.cat-field select{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:.9rem;padding:10px 12px;outline:none;width:100%;}
+.cat-field input:focus,.cat-field select:focus{border-color:var(--accent);}
+.cat-item-footer{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:10px 14px;display:flex;gap:8px;z-index:860;}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 </head>
@@ -199,6 +219,7 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
   <div class="app-header">
     <h1 id="job-heading">New Job</h1>
     <div class="hbtns">
+      <button class="btn btn-ghost btn-sm" id="admin-cat-btn" style="display:none;" onclick="openCatalogueManager()">⚙ Catalogue</button>
       <button class="btn btn-ghost btn-sm" onclick="openTemplateManager()">📋 Templates</button>
     </div>
   </div>
@@ -311,6 +332,87 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
       <button class="btn btn-ghost" onclick="cancelTemplateEdit()">✕ Cancel</button>
       <button class="btn btn-accent" onclick="saveTemplate()">💾 Save Template</button>
     </div>
+  </div>
+</div>
+
+<!-- ══════════ CATALOGUE MANAGER ══════════ -->
+<div id="view-catalogue" class="hidden">
+  <div class="app-header">
+    <button class="btn btn-ghost btn-sm" onclick="closeCatalogueManager()">← Back to Job</button>
+    <h1>Master List</h1>
+    <div class="hbtns">
+      <button class="btn btn-accent btn-sm" onclick="openCatItemModal(null)">＋ Add Item</button>
+    </div>
+  </div>
+  <div class="search-filter-bar">
+    <select id="cat-admin-filter" onchange="_catShowMax=80;renderCatalogueList()">
+      <option value="">All Categories</option>
+      <option value="ARM">ARM</option><option value="ARM BRACE">ARM BRACE</option>
+      <option value="BOLT">BOLT</option><option value="BOX">BOX</option>
+      <option value="BOX TUDS">BOX TUDS</option><option value="CABLE">CABLE</option>
+      <option value="CABLE CLAMP">CABLE CLAMP</option><option value="CABLE COVER">CABLE COVER</option>
+      <option value="CABLE GUARD">CABLE GUARD</option><option value="CONDUCTOR">CONDUCTOR</option>
+      <option value="DRAW WIRE">DRAW WIRE</option><option value="EARTH">EARTH</option>
+      <option value="FUSE">FUSE</option><option value="GUARD">GUARD</option>
+      <option value="HEAT SHRINK">HEAT SHRINK</option><option value="INSULATOR">INSULATOR</option>
+      <option value="JOIN">JOIN</option><option value="KIT">KIT</option>
+      <option value="LIGHTNING ARRESTOR">LIGHTNING ARRESTOR</option><option value="PAD">PAD</option>
+      <option value="PIPE">PIPE</option><option value="POLE">POLE</option>
+      <option value="SIGN">SIGN</option><option value="STAY">STAY</option>
+      <option value="STEEL">STEEL</option><option value="SWITCH">SWITCH</option>
+      <option value="TAPE">TAPE</option><option value="TOOL">TOOL</option>
+      <option value="TRANSFORMER">TRANSFORMER</option><option value="WASHER">WASHER</option>
+    </select>
+    <span id="cat-admin-count" class="search-count"></span>
+  </div>
+  <div style="padding:8px 16px 4px;">
+    <input type="search" id="cat-admin-search" placeholder="Search IV code, description or spec…" oninput="_catShowMax=80;renderCatalogueList()"
+      style="width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--surface2);color:var(--text);font-size:14px;outline:none;">
+  </div>
+  <div id="catalogue-list-area"></div>
+</div>
+
+<!-- ══════════ CAT ITEM MODAL ══════════ -->
+<div id="cat-item-modal" class="cat-item-overlay hidden">
+  <div class="cat-item-box">
+    <div class="cat-item-title" id="cat-modal-title">Add Item</div>
+    <div class="cat-field">
+      <label>IV Code <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);">(optional for custom items)</span></label>
+      <input type="text" id="cat-f-code" placeholder="e.g. 2026">
+    </div>
+    <div class="cat-field">
+      <label>Description <span class="req">*</span></label>
+      <input type="text" id="cat-f-desc" placeholder="e.g. 11kV Pin Arm 3mx100x100">
+    </div>
+    <div class="cat-field">
+      <label>Spec</label>
+      <input type="text" id="cat-f-spec" placeholder="e.g. Eastern">
+    </div>
+    <div class="cat-field">
+      <label>Category</label>
+      <select id="cat-f-cat">
+        <option value="">— Select —</option>
+        <option value="ARM">ARM</option><option value="ARM BRACE">ARM BRACE</option>
+        <option value="BOLT">BOLT</option><option value="BOX">BOX</option>
+        <option value="BOX TUDS">BOX TUDS</option><option value="CABLE">CABLE</option>
+        <option value="CABLE CLAMP">CABLE CLAMP</option><option value="CABLE COVER">CABLE COVER</option>
+        <option value="CABLE GUARD">CABLE GUARD</option><option value="CONDUCTOR">CONDUCTOR</option>
+        <option value="DRAW WIRE">DRAW WIRE</option><option value="EARTH">EARTH</option>
+        <option value="FUSE">FUSE</option><option value="GUARD">GUARD</option>
+        <option value="HEAT SHRINK">HEAT SHRINK</option><option value="INSULATOR">INSULATOR</option>
+        <option value="JOIN">JOIN</option><option value="KIT">KIT</option>
+        <option value="LIGHTNING ARRESTOR">LIGHTNING ARRESTOR</option><option value="PAD">PAD</option>
+        <option value="PIPE">PIPE</option><option value="POLE">POLE</option>
+        <option value="SIGN">SIGN</option><option value="STAY">STAY</option>
+        <option value="STEEL">STEEL</option><option value="SWITCH">SWITCH</option>
+        <option value="TAPE">TAPE</option><option value="TOOL">TOOL</option>
+        <option value="TRANSFORMER">TRANSFORMER</option><option value="WASHER">WASHER</option>
+      </select>
+    </div>
+  </div>
+  <div class="cat-item-footer">
+    <button class="btn btn-ghost" onclick="closeCatItemModal()">✕ Cancel</button>
+    <button class="btn btn-accent" style="flex:1;" onclick="saveCatItem()">💾 Save Item</button>
   </div>
 </div>
 
@@ -479,11 +581,51 @@ let searchCallback=null; // fn(item) called when user picks from search
 let siteCounter=0;
 let confirmCallback=null;
 let tplNameCallback=null;
+let _isAdmin=false;
+let _currentUserName='';
+let _catalogueOverrides=[];
+let _catShowMax=80;
+let _editingCatItem=null;
+
+// ─── SUPABASE LITE ────────────────────────────
+const _SB_URL='https://idvodclpwdabfgsqniwl.supabase.co';
+const _SB_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlkdm9kY2xwd2RhYmZnc3FuaXdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3NzU2NjcsImV4cCI6MjA5NjM1MTY2N30.cld1Y6S__aIO0xn1YfVmUzARthHJcbI8zlmhLRcBLuM';
+const _SB_HDR={'apikey':_SB_ANON,'Authorization':'Bearer '+_SB_ANON,'Content-Type':'application/json'};
+async function _sbGet(table,qs=''){const r=await fetch(`${_SB_URL}/rest/v1/${table}?${qs}`,{headers:_SB_HDR});if(!r.ok)throw new Error(await r.text());return r.json();}
+async function _sbInsert(table,body){const r=await fetch(`${_SB_URL}/rest/v1/${table}`,{method:'POST',headers:{..._SB_HDR,Prefer:'return=representation'},body:JSON.stringify(body)});if(!r.ok)throw new Error(await r.text());return r.json();}
+async function _sbPatch(table,id,body){const r=await fetch(`${_SB_URL}/rest/v1/${table}?id=eq.${id}`,{method:'PATCH',headers:{..._SB_HDR,Prefer:'return=representation'},body:JSON.stringify(body)});if(!r.ok)throw new Error(await r.text());return r.json();}
+async function _sbDel(table,id){const r=await fetch(`${_SB_URL}/rest/v1/${table}?id=eq.${id}`,{method:'DELETE',headers:_SB_HDR});if(!r.ok)throw new Error(await r.text());}
+
+// ─── CATALOGUE OVERRIDES ─────────────────────
+async function loadCatalogueOverrides(){
+  try{_catalogueOverrides=await _sbGet('catalogue_overrides','order=created_at.asc');}
+  catch(e){_catalogueOverrides=[];}
+}
+function effectiveCatalogue(){
+  const deletedKeys=new Set(_catalogueOverrides.filter(o=>o.action==='delete').map(o=>o.original_iv_code));
+  const editedMap={};
+  _catalogueOverrides.filter(o=>o.action==='edit').forEach(o=>{editedMap[o.original_iv_code]=o;});
+  const base=CATALOGUE
+    .filter(item=>!deletedKeys.has(item.a))
+    .map(item=>{
+      const ov=editedMap[item.a];
+      if(ov) return {a:ov.iv_code||item.a,b:ov.description||item.b,c:ov.spec||'',d:ov.category||item.d,_overrideId:ov.id,_originalKey:item.a,_isEdited:true};
+      return item;
+    });
+  const added=_catalogueOverrides.filter(o=>o.action==='add').map(o=>({a:o.iv_code||'',b:o.description||'',c:o.spec||'',d:o.category||'',_customId:o.id,_isCustom:true}));
+  return [...base,...added];
+}
+function setAdminMode(isAdmin){
+  _isAdmin=!!isAdmin;
+  const btn=document.getElementById('admin-cat-btn');
+  if(btn) btn.style.display=_isAdmin?'inline-flex':'none';
+}
 
 // ═══════════════════════════════════════════
 //  STARTUP
 // ═══════════════════════════════════════════
 openDB().then(()=>{ newJob(); renderTemplates(); });
+loadCatalogueOverrides();
 
 // ═══════════════════════════════════════════
 //  HOME
@@ -824,10 +966,10 @@ function doSearch(){
   const countEl=document.getElementById('search-count');
   if(!q && !cat){el.innerHTML='<div class="no-results">Start typing or pick a category…</div>';countEl.textContent='';return;}
   const terms=q?q.split(/\s+/):[];
-  const hits=CATALOGUE.filter(item=>{
+  const hits=effectiveCatalogue().filter(item=>{
     if(cat && item.d!==cat) return false;
     if(!terms.length) return true;
-    const haystack=(item.a+' '+item.b+' '+item.c+' '+item.d).toLowerCase();
+    const haystack=((item.a||'')+' '+(item.b||'')+' '+(item.c||'')+' '+(item.d||'')).toLowerCase();
     return terms.every(t=>haystack.includes(t));
   });
   countEl.textContent=hits.length+' result'+(hits.length!==1?'s':'');
@@ -1705,11 +1847,133 @@ async function submitAndClose(){
   }
 }
 </script>
+<!-- CATALOGUE MANAGER -->
+<script>
+// ─── CATALOGUE MANAGER UI ──────────────────
+function openCatalogueManager(){
+  hide('view-job'); hide('view-tpl');
+  show('view-catalogue');
+  _catShowMax=80;
+  document.getElementById('cat-admin-search').value='';
+  document.getElementById('cat-admin-filter').value='';
+  renderCatalogueList();
+}
+function closeCatalogueManager(){
+  hide('view-catalogue');
+  show('view-job');
+}
+function renderCatalogueList(){
+  const q=(document.getElementById('cat-admin-search')?.value||'').trim().toLowerCase();
+  const cat=document.getElementById('cat-admin-filter')?.value||'';
+  const terms=q?q.split(/\s+/):[];
+  const all=effectiveCatalogue().filter(item=>{
+    if(item._isCustom===undefined&&!item.a&&!item.b) return false; // skip blank
+    if(cat&&item.d!==cat) return false;
+    if(!terms.length) return true;
+    const hay=((item.a||'')+' '+(item.b||'')+' '+(item.c||'')+' '+(item.d||'')).toLowerCase();
+    return terms.every(t=>hay.includes(t));
+  });
+  const countEl=document.getElementById('cat-admin-count');
+  if(countEl) countEl.textContent=all.length+' item'+(all.length!==1?'s':'');
+  const shown=all.slice(0,_catShowMax);
+  window._catItems=shown;
+  const el=document.getElementById('catalogue-list-area');
+  if(!el) return;
+  if(!all.length){el.innerHTML='<div class="no-results" style="padding:40px;">No items found.</div>';return;}
+  el.innerHTML=shown.map((item,ii)=>{
+    const badge=item._isCustom?'<span class="cat-admin-badge custom">CUSTOM</span>':
+                item._isEdited?'<span class="cat-admin-badge edited">EDITED</span>':'';
+    return `<div class="cat-admin-row">
+      <div class="cat-admin-info">
+        <div class="cat-admin-code">${badge}${esc(item.a||'—')}</div>
+        <div class="cat-admin-desc">${esc(item.b||'')}</div>
+        <div class="cat-admin-meta">${esc(item.c||'')}${item.d?' · <span class="si-cat">'+esc(item.d)+'</span>':''}</div>
+      </div>
+      <div class="cat-admin-btns">
+        <button class="btn btn-ghost btn-xs" onclick="editCatItem(${ii})">✏</button>
+        <button class="btn btn-danger btn-xs" onclick="deleteCatItemConfirm(${ii})">🗑</button>
+      </div>
+    </div>`;
+  }).join('')+(all.length>_catShowMax?`<div style="padding:14px;text-align:center;"><button class="btn btn-ghost btn-sm" onclick="_catShowMax+=80;renderCatalogueList()">Show more (${all.length-_catShowMax} remaining)</button></div>`:'');
+}
+
+// ─── ADD / EDIT MODAL ──────────────────────
+function openCatItemModal(editItem){
+  _editingCatItem=editItem||null;
+  document.getElementById('cat-modal-title').textContent=editItem?'Edit Item':'Add Item';
+  document.getElementById('cat-f-code').value=editItem?(editItem.a||''):'';
+  document.getElementById('cat-f-desc').value=editItem?(editItem.b||''):'';
+  document.getElementById('cat-f-spec').value=editItem?(editItem.c||''):'';
+  document.getElementById('cat-f-cat').value=editItem?(editItem.d||''):'';
+  show('cat-item-modal');
+  setTimeout(()=>document.getElementById('cat-f-desc').focus(),100);
+}
+function closeCatItemModal(){
+  hide('cat-item-modal');
+  _editingCatItem=null;
+}
+function editCatItem(ii){
+  openCatItemModal(window._catItems[ii]);
+}
+async function saveCatItem(){
+  const code=document.getElementById('cat-f-code').value.trim();
+  const desc=document.getElementById('cat-f-desc').value.trim();
+  const spec=document.getElementById('cat-f-spec').value.trim();
+  const cat=document.getElementById('cat-f-cat').value;
+  if(!desc){alert('Description is required.');document.getElementById('cat-f-desc').focus();return;}
+  try{
+    const item=_editingCatItem;
+    if(!item){
+      // New item
+      await _sbInsert('catalogue_overrides',{action:'add',iv_code:code||null,description:desc,spec:spec||null,category:cat||null,created_by_name:_currentUserName});
+    } else if(item._isCustom){
+      // Update existing custom item's add record
+      await _sbPatch('catalogue_overrides',item._customId,{iv_code:code||null,description:desc,spec:spec||null,category:cat||null,updated_at:new Date().toISOString()});
+    } else if(item._isEdited){
+      // Update existing edit override
+      await _sbPatch('catalogue_overrides',item._overrideId,{iv_code:code||null,description:desc,spec:spec||null,category:cat||null,updated_at:new Date().toISOString()});
+    } else {
+      // Edit an embedded base item — create an 'edit' override
+      await _sbInsert('catalogue_overrides',{action:'edit',original_iv_code:item.a,iv_code:code||null,description:desc,spec:spec||null,category:cat||null,created_by_name:_currentUserName});
+    }
+    await loadCatalogueOverrides();
+    closeCatItemModal();
+    renderCatalogueList();
+    showToast('✓ Item saved');
+  }catch(e){alert('Save failed: '+e.message);}
+}
+
+// ─── DELETE ────────────────────────────────
+function deleteCatItemConfirm(ii){
+  const item=window._catItems[ii];
+  if(!item) return;
+  const label=item.b||item.a||'this item';
+  showConfirm('Remove from Master List?',`"${label}" will be hidden from all users. This can be reversed via the admin settings.`,async()=>{
+    try{
+      if(item._isCustom){
+        await _sbDel('catalogue_overrides',item._customId);
+      } else if(item._isEdited){
+        // Remove the edit record, then mark the original as deleted
+        await _sbDel('catalogue_overrides',item._overrideId);
+        await _sbInsert('catalogue_overrides',{action:'delete',original_iv_code:item._originalKey,created_by_name:_currentUserName});
+      } else {
+        // Embedded item — create a delete record
+        await _sbInsert('catalogue_overrides',{action:'delete',original_iv_code:item.a,created_by_name:_currentUserName});
+      }
+      await loadCatalogueOverrides();
+      renderCatalogueList();
+      showToast('✓ Item removed');
+    }catch(e){alert('Delete failed: '+e.message);}
+  },'Remove');
+}
+</script>
 <!-- FIELDHUB_BRIDGE_INSTALLED -->
 <script>
 (function(){
   function applyContext(ctx) {
     if (ctx.docId) _hubDocId = ctx.docId;
+    if (ctx.isAdmin != null && typeof setAdminMode === 'function') setAdminMode(ctx.isAdmin);
+    if (ctx.userName) _currentUserName = ctx.userName;
 
     function setVal(id, val) {
       var el = document.getElementById(id);
