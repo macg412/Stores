@@ -291,10 +291,15 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
   </div>
   <!-- Editor (hidden until create/edit) -->
   <div id="view-tpl-edit" class="hidden">
-    <div class="slabel" style="padding:12px 16px 4px;font-size:12px;letter-spacing:1.5px;" id="tpl-edit-label">New Template</div>
+    <div style="padding:10px 16px 6px;">
+      <input type="text" id="tpl-name-field" placeholder="Template name…"
+        style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:.95rem;font-weight:700;padding:10px 13px;width:100%;outline:none;box-sizing:border-box;"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+    </div>
     <div class="tpl-editor" id="tpl-editor-area">
       <div class="slabel" style="margin-bottom:10px;">Template Items</div>
       <div id="tpl-sites-container"></div>
+      <button class="btn btn-ghost btn-xs" style="margin-top:10px;" onclick="addTplSite('')">＋ Add Group</button>
       <div style="margin-top:20px;">
         <div class="slabel" style="margin-bottom:8px;">Site-Specific Reminders</div>
         <div style="font-size:.76rem;color:var(--muted);margin-bottom:10px;">Add a prompt for items that vary site-to-site (e.g. correct bolt length). Users will be asked to select these when applying the template.</div>
@@ -1106,8 +1111,8 @@ function newTemplate(){
   currentTpl={id:'tpl_'+Date.now(),name:'',sites:[],reminders:[],savedAt:Date.now()};
   currentTpl.sites.push({id:'tsite_'+(++tplSiteCounter),name:'Template Items',items:[],open:true});
   renderTplView();
-  document.getElementById('tpl-edit-label').textContent='New Template';
   hide('view-tpl-list'); show('view-tpl-edit');
+  setTimeout(()=>document.getElementById('tpl-name-field').focus(),100);
 }
 async function openTemplate(id){
   const tpls=await dbGetAll('templates');
@@ -1115,7 +1120,6 @@ async function openTemplate(id){
   if(!t)return;
   currentTpl=JSON.parse(JSON.stringify(t));
   renderTplView();
-  document.getElementById('tpl-edit-label').textContent=t.name||'Edit Template';
   hide('view-tpl-list'); show('view-tpl-edit');
 }
 function addTplSite(name){
@@ -1126,6 +1130,8 @@ function addTplSite(name){
 function renderTplView(){
   const h=document.getElementById('tpl-heading');
   if(h) h.textContent=currentTpl.name||'Edit Template';
+  const nf=document.getElementById('tpl-name-field');
+  if(nf) nf.value=currentTpl.name||'';
   renderTplSites();
   renderTplReminders();
 }
@@ -1337,15 +1343,15 @@ function setReminderCategory(i,val){
 }
 
 async function saveTemplate(){
-  showTplName('Name this Template',currentTpl.name||'',async name=>{
-    if(!name)return;
-    currentTpl.name=name;
-    currentTpl.savedAt=Date.now();
-    await dbPut('templates',currentTpl);
-    showToast('✓ Template saved');
-    await renderTemplates();
-    show('view-tpl-list'); hide('view-tpl-edit');
-  });
+  const nf=document.getElementById('tpl-name-field');
+  const name=nf?nf.value.trim():(currentTpl.name||'');
+  if(!name){alert('Please enter a template name.');if(nf)nf.focus();return;}
+  currentTpl.name=name;
+  currentTpl.savedAt=Date.now();
+  await dbPut('templates',currentTpl);
+  showToast('✓ Template saved');
+  await renderTemplates();
+  show('view-tpl-list'); hide('view-tpl-edit');
 }
 
 // ═══════════════════════════════════════════
