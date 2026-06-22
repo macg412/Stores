@@ -286,7 +286,7 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
     </div>
   </div>
 
-  <div class="sticky-footer">
+  <div class="sticky-footer" id="job-footer">
     <button class="btn btn-ghost btn-sm" onclick="addSite()">＋ Site</button>
     <button class="btn btn-info btn-sm" onclick="showPdfPicker()">📄 PDF</button>
     <button class="btn btn-green" onclick="sendOrder()">📧 Send Order</button>
@@ -316,6 +316,7 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
       <input type="text" id="tpl-name-field" placeholder="Template name…"
         style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:.95rem;font-weight:700;padding:10px 13px;width:100%;outline:none;box-sizing:border-box;"
         onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+      <div id="tpl-creator-info" style="font-size:.72rem;color:var(--muted);margin-top:6px;display:none;"></div>
     </div>
     <div class="tpl-editor" id="tpl-editor-area">
       <div class="slabel" style="margin-bottom:10px;">Template Items</div>
@@ -330,7 +331,7 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
     </div>
     <div class="sticky-footer">
       <button class="btn btn-ghost" onclick="cancelTemplateEdit()">✕ Cancel</button>
-      <button class="btn btn-accent" onclick="saveTemplate()">💾 Save Template</button>
+      <button class="btn btn-accent" id="tpl-save-btn" onclick="saveTemplate()">💾 Save Template</button>
     </div>
   </div>
 </div>
@@ -595,6 +596,7 @@ async function _sbGet(table,qs=''){const r=await fetch(`${_SB_URL}/rest/v1/${tab
 async function _sbInsert(table,body){const r=await fetch(`${_SB_URL}/rest/v1/${table}`,{method:'POST',headers:{..._SB_HDR,Prefer:'return=representation'},body:JSON.stringify(body)});if(!r.ok)throw new Error(await r.text());return r.json();}
 async function _sbPatch(table,id,body){const r=await fetch(`${_SB_URL}/rest/v1/${table}?id=eq.${id}`,{method:'PATCH',headers:{..._SB_HDR,Prefer:'return=representation'},body:JSON.stringify(body)});if(!r.ok)throw new Error(await r.text());return r.json();}
 async function _sbDel(table,id){const r=await fetch(`${_SB_URL}/rest/v1/${table}?id=eq.${id}`,{method:'DELETE',headers:_SB_HDR});if(!r.ok)throw new Error(await r.text());}
+async function _sbRpc(fn,body={}){const r=await fetch(`${_SB_URL}/rest/v1/rpc/${fn}`,{method:'POST',headers:{..._SB_HDR,Prefer:'return=representation'},body:JSON.stringify(body)});if(!r.ok)throw new Error(await r.text());return r.json();}
 
 // ─── CATALOGUE OVERRIDES ─────────────────────
 async function loadCatalogueOverrides(){
@@ -624,27 +626,51 @@ function setAdminMode(isAdmin){
 // ═══════════════════════════════════════════
 //  STARTUP
 // ═══════════════════════════════════════════
-openDB().then(()=>{ newJob(); renderTemplates(); });
+openDB().then(()=>{ newJob(); migrateLocalTemplatesToSupabase(); });
 loadCatalogueOverrides();
+
+async function migrateLocalTemplatesToSupabase(){
+  if(localStorage.getItem('storemanTplMigrated')) return;
+  let local=[];
+  try{local=await dbGetAll('templates');}catch(e){return;}
+  if(!local.length){localStorage.setItem('storemanTplMigrated','1');return;}
+  for(const tpl of local){
+    try{
+      const existing=await _sbGet('store_templates',`id=eq.${encodeURIComponent(tpl.id)}`);
+      if(existing&&existing.length) continue;
+      await _sbInsert('store_templates',{
+        id:tpl.id,
+        name:tpl.name||'',
+        sites:tpl.sites||[],
+        reminders:tpl.reminders||[],
+        created_by_name:'',
+        updated_at:new Date(tpl.savedAt||Date.now()).toISOString()
+      });
+    }catch(e){ /* skip individual failures, will retry next load */ }
+  }
+  localStorage.setItem('storemanTplMigrated','1');
+  showToast('✓ Local templates synced to cloud');
+}
 
 // ═══════════════════════════════════════════
 //  HOME
 // ═══════════════════════════════════════════
 async function renderTemplates(){
-  const tpls=await dbGetAll('templates');
-  tpls.sort((a,b)=>(b.savedAt||0)-(a.savedAt||0));
+  let tpls=[];
+  try{tpls=await _sbGet('store_templates','order=updated_at.desc');}catch(e){}
   const el=document.getElementById('tpl-list');
   if(!tpls.length){el.innerHTML='<div class="empty-state"><div class="empty-icon">📋</div><div>No templates yet.<br>Use <strong>+ New Template</strong> or save a job as a template.</div></div>';return;}
   el.innerHTML=tpls.map(t=>{
+    const canEdit=_isAdmin||!t.created_by_name||t.created_by_name===_currentUserName;
     const nitems=(t.sites||[]).reduce((s,st)=>s+(st.items||[]).length,0);
     const nsites=(t.sites||[]).length;
     return `<div class="card" onclick="openTemplate('${t.id}')">
       <div class="card-badge tpl">TPL</div>
       <div class="card-info">
         <div class="card-title">${esc(t.name||'Unnamed Template')}</div>
-        <div class="card-sub">${nsites} group${nsites!==1?'s':''} · ${nitems} item${nitems!==1?'s':''}</div>
+        <div class="card-sub">${nsites} group${nsites!==1?'s':''} · ${nitems} item${nitems!==1?'s':''}${t.created_by_name?' · '+esc(t.created_by_name):''}</div>
       </div>
-      <button class="card-del" onclick="confirmDeleteTpl(event,'${t.id}','${esc(t.name||'this template')}')" title="Delete">🗑</button>
+      ${canEdit?`<button class="card-del" onclick="confirmDeleteTpl(event,'${t.id}','${esc(t.name||'this template')}')" title="Delete">🗑</button>`:''}
     </div>`;
   }).join('');
 }
@@ -685,8 +711,26 @@ function renderJobView(){
   document.getElementById('j-date').value=currentJob.date||'';
   applyJobTypeFields();
   document.getElementById('job-heading').textContent=currentJob.wo?'WO: '+currentJob.wo:'New Job';
-  setSaveBar('Auto-saving…',false);
+  if(currentJob.status==='submitted'){
+    setSaveBar('✓ Submitted — Docket #'+currentJob.docketNo,true);
+  } else {
+    setSaveBar('Auto-saving…',false);
+  }
+  updateJobFooter();
   renderSites();
+}
+function updateJobFooter(){
+  const el=document.getElementById('job-footer');
+  if(!el) return;
+  if(currentJob.status==='submitted'){
+    el.innerHTML=`<span style="color:var(--accent2);font-weight:700;font-size:.85rem;flex:1;display:flex;align-items:center;">✓ Docket #${currentJob.docketNo}</span>
+      <button class="btn btn-info btn-sm" onclick="showPdfPicker()">📄 PDF</button>
+      <button class="btn btn-ghost btn-sm" onclick="newJob()">＋ New Order</button>`;
+  } else {
+    el.innerHTML=`<button class="btn btn-ghost btn-sm" onclick="addSite()">＋ Site</button>
+      <button class="btn btn-info btn-sm" onclick="showPdfPicker()">📄 PDF</button>
+      <button class="btn btn-green" onclick="sendOrder()">📧 Send Order</button>`;
+  }
 }
 function collectJobFields(){
   currentJob.wo=document.getElementById('j-wo').value.trim();
@@ -873,7 +917,8 @@ function removeItem(sid,ii){
 //  APPLY TEMPLATE TO SITE
 // ═══════════════════════════════════════════
 async function applyTemplate(sid){
-  const tpls=await dbGetAll('templates');
+  let tpls=[];
+  try{tpls=await _sbGet('store_templates','order=updated_at.desc');}catch(e){}
   showTplPicker(sid, tpls);
 }
 
@@ -1166,6 +1211,7 @@ function sqRemove(hitIdx){
 // ═══════════════════════════════════════════
 function sendOrder(){
   collectJobFields();
+  if(currentJob.status==='submitted'){alert('This order has already been submitted (Docket #'+currentJob.docketNo+').');return;}
   if(!currentJob.jobType){alert('Please select a Job Type first.');document.getElementById('j-jobtype').focus();return;}
   if(!currentJob.wo && currentJob.jobType!=='STORE STOCK REQUIRED'){alert('Please enter a WO Number first.');document.getElementById('j-wo').focus();return;}
   const allItems=currentJob.sites.reduce((a,s)=>a+(s.items||[]).filter(x=>!x.pending).length,0);
@@ -1205,9 +1251,9 @@ function saveAsTemplate(){
   collectJobFields();
   showTplName('Save Job as Template',currentJob.wo?'Template from WO: '+currentJob.wo:'',async name=>{
     if(!name)return;
-    const tpl={id:'tpl_'+Date.now(),name:name,sites:JSON.parse(JSON.stringify(currentJob.sites||[])),savedAt:Date.now()};
-    await dbPut('templates',tpl);
-    showToast('✓ Template saved');
+    const tpl={id:'tpl_'+Date.now(),name:name,sites:JSON.parse(JSON.stringify(currentJob.sites||[])),reminders:[],created_by_name:_currentUserName,updated_at:new Date().toISOString()};
+    try{await _sbInsert('store_templates',tpl);showToast('✓ Template saved');}
+    catch(e){alert('Save failed: '+e.message);}
   });
 }
 function saveAsTemplateFromMenu(){
@@ -1221,15 +1267,16 @@ function saveSiteAsTemplate(sid){
   const defaultName=site.name||'';
   showTplName('Save Site as Template', defaultName, async name=>{
     if(!name) return;
-    // A site template is stored as a single-site template
     const tpl={
       id:'tpl_'+Date.now(),
       name:name,
       sites:[JSON.parse(JSON.stringify(site))],
-      savedAt:Date.now()
+      reminders:[],
+      created_by_name:_currentUserName,
+      updated_at:new Date().toISOString()
     };
-    await dbPut('templates',tpl);
-    showToast('✓ Template saved');
+    try{await _sbInsert('store_templates',tpl);showToast('✓ Template saved');}
+    catch(e){alert('Save failed: '+e.message);}
   });
 }
 
@@ -1250,17 +1297,20 @@ function cancelTemplateEdit(){
   show('view-tpl-list'); hide('view-tpl-edit');
 }
 function newTemplate(){
-  currentTpl={id:'tpl_'+Date.now(),name:'',sites:[],reminders:[],savedAt:Date.now()};
+  currentTpl={id:'tpl_'+Date.now(),name:'',sites:[],reminders:[],created_by_name:_currentUserName,_isNew:true,_canEdit:true};
   currentTpl.sites.push({id:'tsite_'+(++tplSiteCounter),name:'Template Items',items:[],open:true});
   renderTplView();
   hide('view-tpl-list'); show('view-tpl-edit');
   setTimeout(()=>document.getElementById('tpl-name-field').focus(),100);
 }
 async function openTemplate(id){
-  const tpls=await dbGetAll('templates');
-  const t=tpls.find(x=>x.id===id);
+  let rows=[];
+  try{rows=await _sbGet('store_templates',`id=eq.${encodeURIComponent(id)}`);}catch(e){}
+  const t=rows[0];
   if(!t)return;
   currentTpl=JSON.parse(JSON.stringify(t));
+  currentTpl._isNew=false;
+  currentTpl._canEdit=_isAdmin||!t.created_by_name||t.created_by_name===_currentUserName;
   renderTplView();
   hide('view-tpl-list'); show('view-tpl-edit');
 }
@@ -1273,7 +1323,26 @@ function renderTplView(){
   const h=document.getElementById('tpl-heading');
   if(h) h.textContent=currentTpl.name||'Edit Template';
   const nf=document.getElementById('tpl-name-field');
-  if(nf) nf.value=currentTpl.name||'';
+  if(nf){
+    nf.value=currentTpl.name||'';
+    nf.readOnly=!currentTpl._canEdit;
+    nf.style.opacity=currentTpl._canEdit?'':'0.5';
+  }
+  const ci=document.getElementById('tpl-creator-info');
+  if(ci){
+    if(currentTpl.created_by_name){
+      ci.textContent=(currentTpl._canEdit&&!currentTpl._isNew)?`Created by ${currentTpl.created_by_name}`:`Created by ${currentTpl.created_by_name} — view only`;
+      ci.style.display='';
+    } else {
+      ci.style.display='none';
+    }
+  }
+  const sb=document.getElementById('tpl-save-btn');
+  if(sb){
+    sb.disabled=!currentTpl._canEdit;
+    sb.style.opacity=currentTpl._canEdit?'':'0.5';
+    sb.title=currentTpl._canEdit?'':'Only the creator or an admin can edit this template';
+  }
   renderTplSites();
   renderTplReminders();
 }
@@ -1485,15 +1554,23 @@ function setReminderCategory(i,val){
 }
 
 async function saveTemplate(){
+  if(!currentTpl._canEdit){showToast('✗ Only the creator or an admin can edit this template');return;}
   const nf=document.getElementById('tpl-name-field');
   const name=nf?nf.value.trim():(currentTpl.name||'');
   if(!name){alert('Please enter a template name.');if(nf)nf.focus();return;}
   currentTpl.name=name;
-  currentTpl.savedAt=Date.now();
-  await dbPut('templates',currentTpl);
-  showToast('✓ Template saved');
-  await renderTemplates();
-  show('view-tpl-list'); hide('view-tpl-edit');
+  const now=new Date().toISOString();
+  try{
+    if(currentTpl._isNew){
+      await _sbInsert('store_templates',{id:currentTpl.id,name:currentTpl.name,sites:currentTpl.sites,reminders:currentTpl.reminders||[],created_by_name:currentTpl.created_by_name||_currentUserName,updated_at:now});
+      currentTpl._isNew=false;
+    } else {
+      await _sbPatch('store_templates',currentTpl.id,{name:currentTpl.name,sites:currentTpl.sites,reminders:currentTpl.reminders||[],updated_at:now});
+    }
+    showToast('✓ Template saved');
+    await renderTemplates();
+    show('view-tpl-list'); hide('view-tpl-edit');
+  }catch(e){alert('Save failed: '+e.message);}
 }
 
 // ═══════════════════════════════════════════
@@ -1502,7 +1579,8 @@ async function saveTemplate(){
 function confirmDeleteTpl(e,id,name){
   e.stopPropagation();
   showConfirm('Delete Template?',`Delete template "${name}"? This cannot be undone.`,async()=>{
-    await dbDelete('templates',id); renderTemplates();
+    try{await _sbDel('store_templates',id);}catch(err){alert('Delete failed: '+err.message);return;}
+    renderTemplates();
   },'Delete');
 }
 function confirmDeleteSite(sid,name){
@@ -1594,12 +1672,16 @@ function fmtDateLong(iso){if(!iso)return'';const[y,m,d]=iso.split('-');const mn=
 //  PDF GENERATION
 // ═══════════════════════════════════════════
 
-function nextDocketNo(){
-  const key='storemanDocketNo';
-  const n=parseInt(localStorage.getItem(key)||'59999999');
-  const next=n+1;
-  localStorage.setItem(key,String(next));
-  return next;
+async function nextDocketNo(){
+  try{return await _sbRpc('next_stores_docket');}
+  catch(e){
+    // Fallback to localStorage if Supabase is unavailable
+    const key='storemanDocketNo';
+    const n=parseInt(localStorage.getItem(key)||'59999999');
+    const next=n+1;
+    localStorage.setItem(key,String(next));
+    return next;
+  }
 }
 
 function showPdfPicker(){
@@ -1646,7 +1728,7 @@ async function doPDF(mode, siteId, silent){
   let page=pdfDoc.addPage([A4W,A4H]);
   let y=A4H-MT;
 
-  const docketNo=nextDocketNo();
+  const docketNo=currentJob.docketNo||(currentJob.docketNo=await nextDocketNo());
 
   const today=currentJob.date
     ? new Date(currentJob.date+'T12:00:00').toLocaleDateString('en-NZ',{day:'2-digit',month:'2-digit',year:'numeric'})
@@ -1821,8 +1903,8 @@ async function doPDF(mode, siteId, silent){
 
   showToast('✓ PDF — Docket #'+docketNo);
 
-  // Return the bytes so sendOrder can use them for submission
-  return {bytes, fname};
+  // Return bytes and docket number so submitAndClose can use them
+  return {bytes, fname, docketNo};
 }
 
 // Called only from sendOrder — marks the doc as submitted and closes
@@ -1830,7 +1912,11 @@ async function submitAndClose(){
   collectJobFields();
   if(!currentJob.jobType||(!currentJob.wo&&currentJob.jobType!=='STORE STOCK REQUIRED')||
      !currentJob.sites.reduce((a,s)=>a+(s.items||[]).filter(x=>!x.pending).length,0)) return;
-  const {bytes,fname}=await doPDF('total',null)||{};
+  const {bytes,fname,docketNo}=await doPDF('total',null)||{};
+  currentJob.status='submitted';
+  currentJob.docketNo=currentJob.docketNo||docketNo;
+  setSaveBar('✓ Submitted — Docket #'+currentJob.docketNo,true);
+  updateJobFooter();
   if(window.parent!==window && _hubDocId){
     const payload=JSON.parse(JSON.stringify(currentJob));
     if(bytes){
