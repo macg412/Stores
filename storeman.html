@@ -138,6 +138,20 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
 .nonstock-input:focus{border-bottom-color:var(--accent);}
 .pending-row .ir-info{border-left:3px solid var(--accent);padding-left:8px;}
 .pending-row .ir-desc{color:var(--accent);}
+
+/* ── APPLIED TEMPLATE GROUP ── */
+.tpl-group{border:1px solid var(--border2);border-radius:10px;margin:8px 0;overflow:hidden;}
+.tpl-group-head{display:flex;align-items:center;gap:8px;background:var(--surface2);padding:7px 10px;border-bottom:1px solid var(--border);}
+.tg-name{flex:1;min-width:0;font-size:.78rem;font-weight:700;color:var(--muted);letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.tg-mult{display:flex;align-items:center;gap:5px;flex-shrink:0;}
+.tg-mult-label{font-size:.7rem;color:var(--muted);font-weight:700;}
+.tg-btn{width:34px;height:34px;border:none;border-radius:8px;font-size:1.1rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.tg-minus{background:var(--surface3);color:var(--text);}
+.tg-plus{background:var(--accent);color:#000;}
+.tg-val{min-width:40px;width:40px;text-align:center;font-size:.9rem;font-weight:800;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 3px;-moz-appearance:textfield;color:var(--text);font-family:var(--font);}
+.tg-val::-webkit-inner-spin-button,.tg-val::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+.tpl-group-body{padding:0 10px;}
+.tg-edited{color:var(--info);font-style:italic;}
 .reminder-slot{display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);}
 .reminder-slot:last-child{border-bottom:none;}
 .reminder-fields{flex:1;display:flex;flex-direction:column;gap:6px;}
@@ -854,7 +868,38 @@ function renderSiteItems(sid){
   const cnt=document.getElementById('site-count-'+sid);
   if(cnt)cnt.textContent=site.items.length+' item'+(site.items.length!==1?'s':'');
   if(!site.items.length){el.innerHTML='<div style="color:var(--muted);font-size:.8rem;padding:6px 0 2px;">No items yet — tap Add Items to search.</div>';return;}
-  el.innerHTML=site.items.map((item,ii)=>{
+  // Items applied from one template render inside a group box with a ×N stepper.
+  // They are pushed together, so a group is a contiguous run of matching tg values.
+  let html='',curTg=null;
+  site.items.forEach((item,ii)=>{
+    const tg=item.tg||null;
+    if(tg!==curTg){
+      if(curTg)html+='</div></div>';
+      if(tg)html+=tplGroupHeadHtml(sid,site,item,tg);
+      curTg=tg;
+    }
+    html+=siteItemRowHtml(sid,item,ii);
+  });
+  if(curTg)html+='</div></div>';
+  el.innerHTML=html;
+}
+function tplGroupHeadHtml(sid,site,item,tg){
+  const m=currentTplMult(site,tg);
+  return `<div class="tpl-group">
+      <div class="tpl-group-head">
+        <div class="tg-name">📋 ${esc(item.tgName||'Template')}</div>
+        <div class="tg-mult">
+          <span class="tg-mult-label">×</span>
+          <button class="tg-btn tg-minus" ontouchstart="" onclick="changeTplMult('${sid}','${tg}',-1)">−</button>
+          <input type="number" class="tg-val" id="tgm-${sid}-${tg}" value="${m}" min="1" max="99" onclick="this.select()" oninput="setTplMult('${sid}','${tg}',this.value)">
+          <button class="tg-btn tg-plus" ontouchstart="" onclick="changeTplMult('${sid}','${tg}',1)">＋</button>
+        </div>
+      </div>
+      <div class="tpl-group-body">`;
+}
+function siteItemRowHtml(sid,item,ii){
+  const edited=item.tg?`<span class="tg-edited" id="tgedit-${sid}-${ii}">${item.tgOverride?' · edited':''}</span>`:'';
+  return (function(){
     if(item.pending){
       return `<div class="item-row pending-row">
       <div class="ir-info">
@@ -871,7 +916,7 @@ function renderSiteItems(sid){
       return `<div class="item-row">
       <div class="ir-info">
         <input type="text" class="nonstock-input" value="${escAttr(item.b)}" placeholder="Description (non-stock)…" oninput="setNonStockDesc('${sid}',${ii},this.value)">
-        <div class="ir-meta" style="font-style:italic;font-size:.68rem;">Non-Stock · No IV Code</div>
+        <div class="ir-meta" style="font-style:italic;font-size:.68rem;">Non-Stock · No IV Code${edited}</div>
       </div>
       <div class="ir-controls">
         <button id="uom-${sid}-${ii}" class="uom-toggle${(item.uom||'EA')==='Mtr'?' mtr':''}" onclick="toggleUom('${sid}',${ii})">${item.uom||'EA'}</button>
@@ -885,7 +930,7 @@ function renderSiteItems(sid){
     return `<div class="item-row">
       <div class="ir-info">
         <div class="ir-desc">${esc(item.b)}</div>
-        <div class="ir-meta">${esc(item.a)}${item.c?' · '+esc(item.c):''}${item.d?' · <span class="si-cat">'+esc(item.d)+'</span>':''}</div>
+        <div class="ir-meta">${esc(item.a)}${item.c?' · '+esc(item.c):''}${item.d?' · <span class="si-cat">'+esc(item.d)+'</span>':''}${edited}</div>
       </div>
       <div class="ir-controls">
         <button id="uom-${sid}-${ii}" class="uom-toggle${(item.uom||'EA')==='Mtr'?' mtr':''}" onclick="toggleUom('${sid}',${ii})">${item.uom||'EA'}</button>
@@ -895,15 +940,32 @@ function renderSiteItems(sid){
         <button class="ir-del" onclick="removeItem('${sid}',${ii})">✕</button>
       </div>
     </div>`;
-  }).join('');
+  })();
 }
 function changeQty(sid,ii,delta){
   const site=currentJob.sites.find(s=>s.id===sid);
   if(!site)return;
   site.items[ii].qty=Math.max(1,(site.items[ii].qty||1)+delta);
+  markQtyEdited(sid,ii,site.items[ii]);
   const el=document.getElementById('qv-'+sid+'-'+ii);
   if(el)el.value=site.items[ii].qty;
   scheduleAutoSave();
+}
+function setQty(sid,ii,val){
+  const site=currentJob.sites.find(s=>s.id===sid);
+  if(!site||!site.items[ii])return;
+  const n=parseInt(val,10);
+  site.items[ii].qty=(!isNaN(n)&&n>=1)?n:1;
+  markQtyEdited(sid,ii,site.items[ii]);
+  scheduleAutoSave();
+}
+// A hand-edited quantity opts that line out of its template's ×N multiplier,
+// so a deliberate correction isn't overwritten next time the group is scaled.
+function markQtyEdited(sid,ii,item){
+  if(!item.tg||item.tgOverride)return;
+  item.tgOverride=true;
+  const el=document.getElementById('tgedit-'+sid+'-'+ii);
+  if(el)el.textContent=' · edited';
 }
 function removeItem(sid,ii){
   const site=currentJob.sites.find(s=>s.id===sid);
@@ -966,18 +1028,72 @@ function applyTplToSite(tplIdx){
   if(!tpl||!sid) return;
   const site=currentJob.sites.find(s=>s.id===sid);
   if(!site) return;
+  // Tag everything from this application with one group id so it can be multiplied later
+  const tg='tg_'+Date.now()+'_'+(++tplGroupCounter);
+  const tgName=tpl.name||'Template';
   (tpl.sites||[]).forEach(ts=>{
     (ts.items||[]).forEach(item=>{
-      site.items.push({...item,qty:item.qty||1});
+      const qty=item.qty||1;
+      site.items.push({...stripTplGroup(item),qty,tg,tgName,tgBase:qty,tgMult:1});
     });
   });
   (tpl.reminders||[]).forEach(r=>{
-    site.items.push({pending:true, note:r.note, category:r.category});
+    site.items.push({pending:true, note:r.note, category:r.category, tg, tgName, tgMult:1});
   });
   renderSiteItems(sid);
   scheduleAutoSave();
   overlay.remove();
   showToast('✓ Template applied');
+}
+
+// ─── APPLIED TEMPLATE MULTIPLIER ────────────
+// Items applied from a template carry a shared group id (tg) plus the template's
+// original qty (tgBase), so the whole group can be scaled to ×N after the fact
+// without having to pick the template again. Scaling is absolute (qty = tgBase × N),
+// so going back down to ×1 restores the original quantities exactly.
+let tplGroupCounter=0;
+function stripTplGroup(item){
+  const o={...item};
+  delete o.tg; delete o.tgName; delete o.tgBase; delete o.tgMult; delete o.tgOverride;
+  return o;
+}
+// Grouping is a property of a job, not of a template — don't bake it into saved templates.
+function cleanSitesForTemplate(sites){
+  return JSON.parse(JSON.stringify(sites||[])).map(s=>({...s,items:(s.items||[]).map(stripTplGroup)}));
+}
+function currentTplMult(site,tg){
+  const first=(site.items||[]).find(x=>x.tg===tg);
+  return (first&&first.tgMult)?first.tgMult:1;
+}
+function changeTplMult(sid,tg,delta){
+  const site=currentJob.sites.find(s=>s.id===sid);
+  if(!site)return;
+  applyTplMult(sid,tg,currentTplMult(site,tg)+delta);
+}
+function setTplMult(sid,tg,val){
+  const n=parseInt(val,10);
+  if(isNaN(n)||n<1)return; // ignore half-typed input; the stored value stands until it's valid
+  applyTplMult(sid,tg,n,true);
+}
+// Updates quantities in place rather than re-rendering, so typing in the ×N box
+// doesn't destroy the input under the cursor (same reason changeQty patches the DOM).
+function applyTplMult(sid,tg,mult,fromInput){
+  const site=currentJob.sites.find(s=>s.id===sid);
+  if(!site)return;
+  const m=Math.max(1,Math.min(99,Math.floor(mult)));
+  (site.items||[]).forEach((item,ii)=>{
+    if(item.tg!==tg)return;
+    item.tgMult=m;
+    if(item.pending||item.tgOverride||!item.tgBase)return;
+    item.qty=Math.max(1,item.tgBase*m);
+    const q=document.getElementById('qv-'+sid+'-'+ii);
+    if(q)q.value=item.qty;
+  });
+  if(!fromInput){
+    const mi=document.getElementById('tgm-'+sid+'-'+tg);
+    if(mi)mi.value=m;
+  }
+  scheduleAutoSave();
 }
 
 // ═══════════════════════════════════════════
@@ -1174,7 +1290,11 @@ function sqConfirmAdd(hitIdx){
     const site=currentJob.sites.find(s=>s.id===sid);
     if(site){
       if(_replacePendingTarget&&_replacePendingTarget.sid===sid){
-        site.items.splice(_replacePendingTarget.ii,1,{...item,qty});
+        // Keep a resolved reminder inside its template group, but treat the chosen qty
+        // as final — it was picked for this site, so ×N shouldn't rescale it.
+        const slot=site.items[_replacePendingTarget.ii]||{};
+        const carry=slot.tg?{tg:slot.tg,tgName:slot.tgName,tgMult:slot.tgMult||1,tgOverride:true}:{};
+        site.items.splice(_replacePendingTarget.ii,1,{...item,qty,...carry});
         _replacePendingTarget=null;
       } else {
         site.items.push({...item,qty});
@@ -1251,7 +1371,7 @@ function saveAsTemplate(){
   collectJobFields();
   showTplName('Save Job as Template',currentJob.wo?'Template from WO: '+currentJob.wo:'',async name=>{
     if(!name)return;
-    const tpl={id:'tpl_'+Date.now(),name:name,sites:JSON.parse(JSON.stringify(currentJob.sites||[])),reminders:[],created_by_name:_currentUserName,updated_at:new Date().toISOString()};
+    const tpl={id:'tpl_'+Date.now(),name:name,sites:cleanSitesForTemplate(currentJob.sites),reminders:[],created_by_name:_currentUserName,updated_at:new Date().toISOString()};
     try{await _sbInsert('store_templates',tpl);showToast('✓ Template saved');}
     catch(e){alert('Save failed: '+e.message);}
   });
@@ -1270,7 +1390,7 @@ function saveSiteAsTemplate(sid){
     const tpl={
       id:'tpl_'+Date.now(),
       name:name,
-      sites:[JSON.parse(JSON.stringify(site))],
+      sites:cleanSitesForTemplate([site]),
       reminders:[],
       created_by_name:_currentUserName,
       updated_at:new Date().toISOString()
