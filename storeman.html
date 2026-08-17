@@ -1356,6 +1356,7 @@ function sendOrder(){
   const div='─'.repeat(52);
   const today=new Date().toLocaleDateString('en-NZ',{day:'2-digit',month:'short',year:'numeric'});
   let body=`GEAR / MATERIAL ORDER REQUEST\n${div}\n\n`;
+  body+=`Issuing Branch: ${boldText(currentJob.issuingBranch||DEFAULT_BRANCH)}\n`;
   if(currentJob.jobType) body+=`Job Type:      ${boldText(currentJob.jobType)}\n`;
   if(currentJob.wo)     body+=`WO Number:     ${boldText(currentJob.wo)}\n`;
   if(currentJob.jobType==='Fault'){
