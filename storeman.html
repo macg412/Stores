@@ -244,6 +244,11 @@ mark{background:transparent;color:var(--accent);font-weight:700;}
     <!-- Job details -->
     <div class="slabel" style="margin-top:10px;">Job Details</div>
     <div class="form-grid">
+      <!-- Options are filled from ISSUING_BRANCHES so there's one list to edit -->
+      <div class="field span2">
+        <label>Issuing Branch <span class="req">*</span></label>
+        <select id="j-branch" onchange="jobChanged()"></select>
+      </div>
       <div class="field">
         <label>WO Number <span class="req" id="wo-req">*</span></label>
         <input type="text" id="j-wo" placeholder="WO-12345" oninput="jobChanged()">
@@ -589,7 +594,14 @@ function dbDelete(store,id){return new Promise((res,rej)=>{const tx=db.transacti
 // ═══════════════════════════════════════════
 let _hubDocId=null;
 let _exportMode=false;
-let currentJob=null;   // {id, wo, jobType, loc, orderer, caeNumber, jeNumber, downerWO, eleNumber, sites:[...], savedAt}
+let currentJob=null;   // {id, issuingBranch, wo, jobType, loc, orderer, caeNumber, jeNumber, downerWO, eleNumber, sites:[...], savedAt}
+
+// Branches gear can be issued from. Only one for now — add to this list to offer more.
+const ISSUING_BRANCHES=['MCO - PG POWER COROMANDEL'];
+const DEFAULT_BRANCH=ISSUING_BRANCHES[0];
+// This script sits below the form, so the select is already in the DOM here.
+document.getElementById('j-branch').innerHTML=
+  ISSUING_BRANCHES.map(b=>`<option value="${b}">${b}</option>`).join('');
 let currentTpl=null;   // {id, name, sites:[...]}
 let autoSaveTimer=null;
 let searchCallback=null; // fn(item) called when user picks from search
@@ -707,12 +719,15 @@ function goHome(){
 //  JOB - CREATE / OPEN
 // ═══════════════════════════════════════════
 function newJob(){
-  currentJob={id:'job_'+Date.now(),wo:'',jobType:'',loc:'',orderer:'',caeNumber:'',jeNumber:'',downerWO:'',eleNumber:'',date:new Date().toISOString().slice(0,10),sites:[],savedAt:Date.now()};
+  currentJob={id:'job_'+Date.now(),issuingBranch:DEFAULT_BRANCH,wo:'',jobType:'',loc:'',orderer:'',caeNumber:'',jeNumber:'',downerWO:'',eleNumber:'',date:new Date().toISOString().slice(0,10),sites:[],savedAt:Date.now()};
   addSiteToJob('Site 1');
   renderJobView();
   show('view-job'); hide('view-tpl');
 }
 function renderJobView(){
+  // Drafts saved before this field existed have no branch — fall back to the default
+  if(!ISSUING_BRANCHES.includes(currentJob.issuingBranch)) currentJob.issuingBranch=DEFAULT_BRANCH;
+  document.getElementById('j-branch').value=currentJob.issuingBranch;
   document.getElementById('j-wo').value=currentJob.wo||'';
   document.getElementById('j-jobtype').value=currentJob.jobType||'';
   updateWoRequired(currentJob.jobType||'');
@@ -747,6 +762,7 @@ function updateJobFooter(){
   }
 }
 function collectJobFields(){
+  currentJob.issuingBranch=document.getElementById('j-branch').value||DEFAULT_BRANCH;
   currentJob.wo=document.getElementById('j-wo').value.trim();
   currentJob.jobType=document.getElementById('j-jobtype').value;
   currentJob.loc=document.getElementById('j-loc').value.trim();
@@ -1887,6 +1903,7 @@ async function doPDF(mode, siteId, silent){
 
   // ── JOB DETAILS BLOCK ─────────────────────────────────────────
   const detailRows=[
+    ['Issuing Branch', currentJob.issuingBranch||DEFAULT_BRANCH],
     ['Job Type', currentJob.jobType||'—'],
     ['WO Number', currentJob.wo||'N/A'],
     (currentJob.jobType==='Fault'&&currentJob.caeNumber)?['CAE #', currentJob.caeNumber]:null,
